@@ -56,6 +56,7 @@ const copiedPath = ref<string | null>(null);
 const isCheckingUpdates = ref(false);
 const isInstallingUpdate = ref(false);
 const isDashboardRefreshing = ref(false);
+const isChoosingCliPath = ref(false);
 const hookToggleTarget = ref<"enable" | "disable" | null>(null);
 let unlistenDashboardRefreshStarted: UnlistenFn | undefined;
 let unlistenDashboardRefresh: UnlistenFn | undefined;
@@ -74,6 +75,14 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
   { label: "日志", value: "logs" },
 ];
 const announcementItems: readonly AnnouncementItem[] = [
+  {
+    title: "Codex CLI 路径设置",
+    detail: "设置页支持手动选择 Codex CLI 路径，并会在保存前验证所选 CLI 是否可启动。",
+  },
+  {
+    title: "VS Code Codex 插件识别",
+    detail: "自动探测新增 VS Code Codex 插件目录，未配置路径时也能优先找到插件内置 CLI。",
+  },
   {
     title: "图标与额度提示更新",
     detail: "重新设计应用图标与托盘图标，桌面图标不再显示额度条，额度条仅保留在运行时托盘图标中。",
@@ -412,6 +421,39 @@ async function saveShortcut(): Promise<void> {
   }
 }
 
+async function chooseCodexCliPath(): Promise<void> {
+  if (isChoosingCliPath.value) {
+    return;
+  }
+
+  isChoosingCliPath.value = true;
+
+  try {
+    const path = await invoke<string | null>("choose_codex_cli_path");
+    if (!path) {
+      return;
+    }
+
+    const settings = await invoke<SettingsSnapshot["settings"]>("set_codex_cli_path", { path });
+    if (settingsSnapshot.value) {
+      settingsSnapshot.value = { ...settingsSnapshot.value, settings };
+    }
+
+    await loadSettingsSnapshot();
+  } finally {
+    isChoosingCliPath.value = false;
+  }
+}
+
+async function clearCodexCliPath(): Promise<void> {
+  const settings = await invoke<SettingsSnapshot["settings"]>("clear_codex_cli_path");
+  if (settingsSnapshot.value) {
+    settingsSnapshot.value = { ...settingsSnapshot.value, settings };
+  }
+
+  await loadSettingsSnapshot();
+}
+
 async function toggleStartup(): Promise<void> {
   const enabled = !(startupStatus.value?.enabled ?? false);
   const startup = await invoke<SettingsSnapshot["startup"]>("set_startup_enabled", { enabled });
@@ -502,6 +544,10 @@ async function copyPath(value: string | null | undefined): Promise<void> {
       copiedPath.value = null;
     }
   }, 1200);
+}
+
+function pathWasCopied(value: string | null | undefined): boolean {
+  return Boolean(value) && copiedPath.value === value;
 }
 
 function bindDetailWindow(): void {
@@ -850,6 +896,21 @@ function formatLogTime(value: string): string {
 
         <article class="setting-row">
           <div>
+            <strong>Codex CLI 路径</strong>
+            <span>{{ settingsSnapshot?.settings.codexCliPath ?? "自动探测" }}</span>
+          </div>
+          <div class="setting-actions">
+            <button type="button" :disabled="isChoosingCliPath" @click="chooseCodexCliPath">
+              {{ isChoosingCliPath ? "选择中" : "选择" }}
+            </button>
+            <button type="button" :disabled="!settingsSnapshot?.settings.codexCliPath" @click="clearCodexCliPath">
+              自动
+            </button>
+          </div>
+        </article>
+
+        <article class="setting-row">
+          <div>
             <strong>检查更新</strong>
             <span>{{ updateMessage }}</span>
           </div>
@@ -885,14 +946,14 @@ function formatLogTime(value: string): string {
           <dd>{{ runtimeInfo?.appVersion ?? "-" }}</dd>
         </div>
         <div>
-          <dt>Codex CLI / Codex.app</dt>
+          <dt>Codex CLI</dt>
           <dd>{{ runtimeInfo?.cliVersion ?? "未找到可启动 CLI" }}</dd>
         </div>
         <div>
           <dt>CLI 路径</dt>
           <dd>
             <button type="button" @click="copyPath(runtimeInfo?.cliPath)">
-              {{ copiedPath === runtimeInfo?.cliPath ? "已复制" : (runtimeInfo?.cliPath ?? "-") }}
+              {{ pathWasCopied(runtimeInfo?.cliPath) ? "已复制" : (runtimeInfo?.cliPath ?? "未找到") }}
             </button>
           </dd>
         </div>
@@ -900,7 +961,7 @@ function formatLogTime(value: string): string {
           <dt>本地安装路径</dt>
           <dd>
             <button type="button" @click="copyPath(runtimeInfo?.installPath)">
-              {{ copiedPath === runtimeInfo?.installPath ? "已复制" : (runtimeInfo?.installPath ?? "-") }}
+              {{ pathWasCopied(runtimeInfo?.installPath) ? "已复制" : (runtimeInfo?.installPath ?? "-") }}
             </button>
           </dd>
         </div>

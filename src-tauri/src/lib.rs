@@ -631,6 +631,21 @@ fn set_global_shortcut(app: tauri::AppHandle, shortcut: String) -> Result<AppSet
 }
 
 #[tauri::command]
+fn choose_codex_cli_path() -> Option<String> {
+    settings::choose_codex_cli_path()
+}
+
+#[tauri::command]
+async fn set_codex_cli_path(path: String) -> Result<AppSettings, String> {
+    settings::save_codex_cli_path(path).await
+}
+
+#[tauri::command]
+fn clear_codex_cli_path() -> Result<AppSettings, String> {
+    settings::clear_codex_cli_path()
+}
+
+#[tauri::command]
 fn get_recent_logs() -> Vec<LogEntry> {
     settings::recent_logs(80)
 }
@@ -861,6 +876,9 @@ pub fn run() {
             refresh_dashboard,
             get_settings_snapshot,
             set_global_shortcut,
+            choose_codex_cli_path,
+            set_codex_cli_path,
+            clear_codex_cli_path,
             get_recent_logs,
             get_startup_status,
             set_startup_enabled,

@@ -36,6 +36,11 @@ pub async fn probe_codex_cli(configured_path: Option<PathBuf>) -> Result<CliProb
     Err("未找到可启动的 Codex CLI".to_string())
 }
 
+pub async fn probe_codex_cli_path(path: PathBuf) -> Result<CliProbe, String> {
+    let version = read_cli_version(&path).await?;
+    Ok(CliProbe { path, version })
+}
+
 pub async fn fetch_cli_quota(probe: &CliProbe) -> Result<QuotaFetchResult, String> {
     let mut command = codex_app_server_command(&probe.path);
     let mut child = command
@@ -210,6 +215,12 @@ fn collect_candidates(configured_path: Option<PathBuf>) -> Vec<PathBuf> {
         )));
     }
 
+    if let Ok(user_profile) = env::var("USERPROFILE") {
+        candidates.extend(collect_vscode_extension_candidates(PathBuf::from(
+            user_profile,
+        )));
+    }
+
     if let Ok(path) = env::var("PATH") {
         let names = if cfg!(windows) {
             vec!["codex.cmd", "codex.exe", "codex"]
@@ -243,6 +254,84 @@ fn collect_local_app_data_candidates(local_app_data: PathBuf) -> Vec<PathBuf> {
     versioned_candidates.reverse();
     candidates.extend(versioned_candidates);
     candidates
+}
+
+fn collect_vscode_extension_candidates(user_profile: PathBuf) -> Vec<PathBuf> {
+    let extension_roots = vec![
+        user_profile.join(".vscode\\extensions"),
+        user_profile.join(".vscode-insiders\\extensions"),
+    ];
+    let mut candidates = Vec::new();
+
+    for root in extension_roots {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() && vscode_extension_may_contain_codex(&path) {
+                collect_codex_executables(&path, &mut candidates);
+            }
+        }
+    }
+
+    candidates.sort();
+    candidates.reverse();
+    candidates
+}
+
+fn vscode_extension_may_contain_codex(path: &PathBuf) -> bool {
+    let directory_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if text_mentions_codex(&directory_name) {
+        return true;
+    }
+
+    let Ok(content) = fs::read_to_string(path.join("package.json")) else {
+        return false;
+    };
+    text_mentions_codex(&content)
+}
+
+fn text_mentions_codex(value: &str) -> bool {
+    let text = value.to_ascii_lowercase();
+    text.contains("codex") || text.contains("chatgpt") || text.contains("openai")
+}
+
+fn collect_codex_executables(root: &PathBuf, candidates: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_codex_executables(&path, candidates);
+            continue;
+        }
+
+        if is_codex_executable(&path) {
+            candidates.push(path);
+        }
+    }
+}
+
+fn is_codex_executable(path: &PathBuf) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if cfg!(windows) {
+        name == "codex.exe" || name == "codex.cmd" || name == "codex"
+    } else {
+        name == "codex"
+    }
 }
 
 fn deduplicate_candidates(candidates: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -581,7 +670,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        build_cli_result, collect_local_app_data_candidates, extract_cli_windows, parse_cli_usage,
+        build_cli_result, collect_local_app_data_candidates, collect_vscode_extension_candidates,
+        extract_cli_windows, parse_cli_usage,
     };
 
     #[test]
@@ -600,6 +690,32 @@ mod tests {
         let candidates = collect_local_app_data_candidates(root.clone());
 
         assert!(candidates.contains(&root.join("OpenAI\\Codex\\bin\\ea1c60319a1dcb19\\codex.exe")));
+
+        fs::remove_dir_all(root).expect("test temp dir should be removed");
+    }
+
+    #[test]
+    fn includes_codex_cli_from_vscode_extension_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "codextray-vscode-cli-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be valid")
+                .as_nanos()
+        ));
+        let extension_dir = root.join(".vscode\\extensions\\openai.chatgpt-26.623.101652-win32-x64");
+        let cli_dir = extension_dir.join("bin\\windows-x86_64");
+        fs::create_dir_all(&cli_dir).expect("test CLI dir should be created");
+        fs::write(
+            extension_dir.join("package.json"),
+            r#"{"publisher":"OpenAI","name":"codex"}"#,
+        )
+        .expect("test extension package should be created");
+        fs::write(cli_dir.join("codex.exe"), b"").expect("test codex.exe should be created");
+
+        let candidates = collect_vscode_extension_candidates(root.clone());
+
+        assert!(candidates.contains(&cli_dir.join("codex.exe")));
 
         fs::remove_dir_all(root).expect("test temp dir should be removed");
     }

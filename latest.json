@@ -1,11 +1,11 @@
 {
-  "version": "1.2.2",
-  "notes": "CodexTray 1.2.2：启动和手动检查更新时只提示新版本，用户确认后才会下载安装。",
-  "pub_date": "2026-07-03T09:39:15Z",
+  "version": "1.3.0",
+  "notes": "CodexTray 1.3.0：新增 Codex CLI 手动路径选择，自动识别 VS Code Codex 插件内置 CLI，并修正未找到路径时的设置页显示。",
+  "pub_date": "2026-07-03T11:59:39Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUOHczczc1VWpGREl3Z1pUQnh1QXhkQkdsYzlVeEpXemFtZFNTakVma2FKUG5OOVFVRVYzd0syVDZGVGZVSFdDbUZvdlluSkczL0ZreWNwclZObkZGNUFpQk5CeWJuZXc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMDcxMjUzCWZpbGU6Q29kZXhUcmF5XzEuMi4yX3g2NC1zZXR1cC5leGUKQ0ZoNjZLTGtvd3kyeGxEcFJlcE5sSUlVUkJ5QyswTHJpUDljNFBLSFVnOE51NUFmeVNpcTU5LzlLWGdvdndnQlFkRWNJcWxPZzJBSE9CRjZXT0I4Q2c9PQo=",
-      "url": "https://github.com/ShumTin/CodexTray/releases/download/v1.2.2/CodexTray_1.2.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUOHczczc1VWpGREZiMGpoUHdpMUh5ZGxWR0hYdk93Q1UxdjdiWnBDcEo1Wk5ENzhFQk1LMzBudWtPM2VramxmSTR2TVBaWTZDS2RXNWNLYlBXOWdUaWgrcEZKWFNROHdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMDc5OTM2CWZpbGU6Q29kZXhUcmF5XzEuMy4wX3g2NC1zZXR1cC5leGUKUnhncWFKSlpRbFIzZG5hZXllMS9sbGZIMlVUdURVZlF3a0pVRXZtcnhmRzgxaDZhTkJ3cWRKWmlMYTVnSDJ5SzdxejVuWHF1QTNPdlR6RGt0OTQyQkE9PQo=",
+      "url": "https://github.com/ShumTin/CodexTray/releases/download/v1.3.0/CodexTray_1.3.0_x64-setup.exe"
     }
   }
 }

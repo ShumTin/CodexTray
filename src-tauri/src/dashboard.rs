@@ -7,6 +7,7 @@ use crate::models::{
     QuotaFetchResult, QuotaSourceKind, RateLimitSnapshot, TokenActivitySnapshot,
     TokenActivitySource,
 };
+use crate::settings;
 use crate::token_usage::{build_heatmap_days, scan_local_jsonl_usage};
 
 #[derive(Default)]
@@ -85,7 +86,7 @@ pub async fn refresh_token_activity(state: &DashboardState) -> DashboardSnapshot
 async fn fetch_cli_quota_with_diagnostics(
     diagnostics: &mut DiagnosticsSnapshot,
 ) -> Option<QuotaFetchResult> {
-    let probe = match probe_codex_cli(None).await {
+    let probe = match probe_codex_cli(settings::configured_codex_cli_path()).await {
         Ok(probe) => {
             diagnostics.cli_probe =
                 DiagnosticItem::ok("CLI 探测", format!("可启动：{}", probe.version));
@@ -114,7 +115,7 @@ async fn fetch_cli_quota_with_diagnostics(
 async fn fetch_cli_usage_with_diagnostics(
     diagnostics: &mut DiagnosticsSnapshot,
 ) -> Option<TokenActivitySnapshot> {
-    let probe = match probe_codex_cli(None).await {
+    let probe = match probe_codex_cli(settings::configured_codex_cli_path()).await {
         Ok(probe) => {
             diagnostics.cli_probe =
                 DiagnosticItem::ok("CLI 探测", format!("可启动：{}", probe.version));

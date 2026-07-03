@@ -8,7 +8,8 @@ use chrono::Utc;
 use serde_json::{Map, Value};
 
 use crate::cli::{
-    list_codex_hooks, probe_codex_cli, read_codex_config, write_codex_config_batch, CliProbe,
+    list_codex_hooks, probe_codex_cli, probe_codex_cli_path, read_codex_config,
+    write_codex_config_batch, CliProbe,
 };
 use crate::models::{
     AppSettings, DiagnosticStatus, HookStatus, LogEntry, RuntimeInfo, SettingsSnapshot,
@@ -94,6 +95,47 @@ pub fn save_global_shortcut(shortcut: String) -> Result<AppSettings, String> {
     let mut settings = read_settings();
     settings.global_shortcut = normalized;
     write_settings(&settings)
+}
+
+pub async fn save_codex_cli_path(path: String) -> Result<AppSettings, String> {
+    let normalized = path.trim().trim_matches('"').to_string();
+    if normalized.is_empty() {
+        return Err("Codex CLI 路径不能为空".to_string());
+    }
+
+    let path = PathBuf::from(&normalized);
+    if !path.is_file() {
+        return Err("请选择可执行的 Codex CLI 文件".to_string());
+    }
+
+    probe_codex_cli_path(path)
+        .await
+        .map_err(|error| format!("所选 Codex CLI 不可启动：{}", error))?;
+
+    let mut settings = read_settings();
+    settings.codex_cli_path = Some(normalized);
+    write_settings(&settings)
+}
+
+pub fn clear_codex_cli_path() -> Result<AppSettings, String> {
+    let mut settings = read_settings();
+    settings.codex_cli_path = None;
+    write_settings(&settings)
+}
+
+pub fn choose_codex_cli_path() -> Option<String> {
+    rfd::FileDialog::new()
+        .set_title("选择 Codex CLI")
+        .add_filter("Codex CLI", &["exe", "cmd"])
+        .add_filter("所有文件", &["*"])
+        .pick_file()
+        .map(|path| path.display().to_string())
+}
+
+pub fn configured_codex_cli_path() -> Option<PathBuf> {
+    read_settings()
+        .codex_cli_path
+        .and_then(|path| non_empty_path(path.trim()))
 }
 
 pub fn get_startup_status() -> StartupStatus {
@@ -339,7 +381,7 @@ pub fn append_log(level: &str, message: &str) {
 }
 
 async fn runtime_info() -> RuntimeInfo {
-    let cli_probe = probe_codex_cli(None).await.ok();
+    let cli_probe = probe_codex_cli(configured_codex_cli_path()).await.ok();
     let install_path = current_exe_path()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|_| "未知".to_string());
@@ -362,6 +404,15 @@ fn default_settings() -> AppSettings {
     AppSettings {
         theme: ThemeMode::Light,
         global_shortcut: "Ctrl+Shift+C".to_string(),
+        codex_cli_path: None,
+    }
+}
+
+fn non_empty_path(value: &str) -> Option<PathBuf> {
+    if value.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(value))
     }
 }
 
@@ -495,7 +546,7 @@ fn startup_value_matches_current_exe(value: &str) -> bool {
 }
 
 async fn codex_cli_probe() -> Result<CliProbe, String> {
-    probe_codex_cli(None).await
+    probe_codex_cli(configured_codex_cli_path()).await
 }
 
 async fn ensure_codex_hooks_globally_enabled(probe: &CliProbe) -> Result<(), String> {

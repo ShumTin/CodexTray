@@ -170,6 +170,8 @@ pub enum ThemeMode {
 pub struct AppSettings {
     pub theme: ThemeMode,
     pub global_shortcut: String,
+    #[serde(default)]
+    pub codex_cli_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
