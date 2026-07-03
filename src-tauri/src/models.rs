@@ -194,6 +194,7 @@ pub struct UpdateStatus {
     pub status: DiagnosticStatus,
     pub message: String,
     pub checked_at: String,
+    pub available_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

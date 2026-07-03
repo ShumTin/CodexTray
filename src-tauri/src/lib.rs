@@ -657,40 +657,42 @@ async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
 
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
-    let config = match settings::update_channel_config(Some(app.config())) {
-        Ok(config) => config,
-        Err(_) => {
-            return settings::update_status(
-                DiagnosticStatus::Skipped,
-                settings::update_channel_unconfigured_message(),
-            );
-        }
-    };
-    let endpoint = match Url::parse(&config.endpoint) {
-        Ok(endpoint) => endpoint,
-        Err(error) => {
-            let message = format!("更新端点格式无效：{}", error);
-            settings::append_log("ERROR", &message);
-            return settings::update_status(DiagnosticStatus::Error, message);
-        }
-    };
-    let updater = match app
-        .updater_builder()
-        .endpoints(vec![endpoint])
-        .and_then(|builder| builder.pubkey(config.pubkey).build())
-    {
+    let updater = match build_updater(&app) {
         Ok(updater) => updater,
-        Err(error) => {
-            let message = format!("更新检查初始化失败：{}", error_details(&error));
-            settings::append_log("ERROR", &message);
-            return settings::update_status(DiagnosticStatus::Error, message);
-        }
+        Err(status) => return status,
     };
 
     match updater.check().await {
         Ok(Some(update)) => {
             let version = update.version.clone();
-            let message = format!("发现新版本：{}，开始下载安装", version);
+            let message = format!("发现新版本：{}，请确认后安装", version);
+            settings::append_log("INFO", &message);
+            settings::update_status_with_version(DiagnosticStatus::Warning, message, Some(version))
+        }
+        Ok(None) => {
+            let message = "当前已是最新版本".to_string();
+            settings::append_log("INFO", &message);
+            settings::update_status(DiagnosticStatus::Ok, message)
+        }
+        Err(error) => {
+            let message = format!("更新检查失败：{}", error_details(&error));
+            settings::append_log("ERROR", &message);
+            settings::update_status(DiagnosticStatus::Error, message)
+        }
+    }
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> UpdateStatus {
+    let updater = match build_updater(&app) {
+        Ok(updater) => updater,
+        Err(status) => return status,
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            let version = update.version.clone();
+            let message = format!("确认安装新版本：{}，开始下载安装", version);
             settings::append_log("INFO", &message);
 
             match update
@@ -721,6 +723,40 @@ async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
             let message = format!("更新检查失败：{}", error_details(&error));
             settings::append_log("ERROR", &message);
             settings::update_status(DiagnosticStatus::Error, message)
+        }
+    }
+}
+
+fn build_updater(
+    app: &tauri::AppHandle,
+) -> Result<tauri_plugin_updater::Updater, UpdateStatus> {
+    let config = match settings::update_channel_config(Some(app.config())) {
+        Ok(config) => config,
+        Err(_) => {
+            return Err(settings::update_status(
+                DiagnosticStatus::Skipped,
+                settings::update_channel_unconfigured_message(),
+            ));
+        }
+    };
+    let endpoint = match Url::parse(&config.endpoint) {
+        Ok(endpoint) => endpoint,
+        Err(error) => {
+            let message = format!("更新端点格式无效：{}", error);
+            settings::append_log("ERROR", &message);
+            return Err(settings::update_status(DiagnosticStatus::Error, message));
+        }
+    };
+    match app
+        .updater_builder()
+        .endpoints(vec![endpoint])
+        .and_then(|builder| builder.pubkey(config.pubkey).build())
+    {
+        Ok(updater) => Ok(updater),
+        Err(error) => {
+            let message = format!("更新检查初始化失败：{}", error_details(&error));
+            settings::append_log("ERROR", &message);
+            Err(settings::update_status(DiagnosticStatus::Error, message))
         }
     }
 }
@@ -830,7 +866,8 @@ pub fn run() {
             set_startup_enabled,
             get_hook_status,
             set_hook_enabled,
-            check_for_updates
+            check_for_updates,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

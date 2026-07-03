@@ -54,6 +54,7 @@ const detailSnapshot = ref<HeatmapDetailPayload | null>(null);
 const shortcutDraft = ref("Ctrl+Shift+C");
 const copiedPath = ref<string | null>(null);
 const isCheckingUpdates = ref(false);
+const isInstallingUpdate = ref(false);
 const isDashboardRefreshing = ref(false);
 const hookToggleTarget = ref<"enable" | "disable" | null>(null);
 let unlistenDashboardRefreshStarted: UnlistenFn | undefined;
@@ -80,6 +81,10 @@ const announcementItems: readonly AnnouncementItem[] = [
   {
     title: "安装包发布方式调整",
     detail: "Windows 安装包仅保留 NSIS 版本，不再提供 MSI 安装包。",
+  },
+  {
+    title: "更新安装确认机制",
+    detail: "启动和手动检查更新时只提示新版本，需用户确认后才会下载安装。",
   },
   {
     title: "CodexTray 开源发布",
@@ -160,9 +165,25 @@ const hookButtonLabel = computed(() => {
   return hookStatus.value?.enabled ? "关闭" : "开启";
 });
 const updateStatus = computed(() => settingsSnapshot.value?.update);
+const updateAvailableVersion = computed(() => updateStatus.value?.availableVersion ?? null);
 const updateMessage = computed(() =>
-  isCheckingUpdates.value ? "正在检查更新" : (updateStatus.value?.message ?? "等待检查"),
+  isInstallingUpdate.value
+    ? "正在下载安装更新"
+    : isCheckingUpdates.value
+      ? "正在检查更新"
+      : (updateStatus.value?.message ?? "等待检查"),
 );
+const updateButtonLabel = computed(() => {
+  if (isInstallingUpdate.value) {
+    return "安装中";
+  }
+
+  if (isCheckingUpdates.value) {
+    return "检查中";
+  }
+
+  return updateAvailableVersion.value ? "安装" : "检查";
+});
 const runtimeInfo = computed(() => settingsSnapshot.value?.runtime);
 
 onMounted(() => {
@@ -423,7 +444,12 @@ async function toggleHook(): Promise<void> {
 }
 
 async function checkUpdates(): Promise<void> {
-  if (isCheckingUpdates.value) {
+  if (isCheckingUpdates.value || isInstallingUpdate.value) {
+    return;
+  }
+
+  if (updateAvailableVersion.value) {
+    await confirmAndInstallUpdate(updateAvailableVersion.value);
     return;
   }
 
@@ -439,6 +465,28 @@ async function checkUpdates(): Promise<void> {
     await loadRecentLogs();
   } finally {
     isCheckingUpdates.value = false;
+  }
+}
+
+async function confirmAndInstallUpdate(version: string): Promise<void> {
+  const confirmed = window.confirm(`发现新版本 ${version}，是否立即下载安装？`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  isInstallingUpdate.value = true;
+
+  try {
+    const update = await invoke<UpdateStatus>("install_update");
+
+    if (settingsSnapshot.value) {
+      settingsSnapshot.value = { ...settingsSnapshot.value, update };
+    }
+
+    await loadRecentLogs();
+  } finally {
+    isInstallingUpdate.value = false;
   }
 }
 
@@ -805,8 +853,8 @@ function formatLogTime(value: string): string {
             <strong>检查更新</strong>
             <span>{{ updateMessage }}</span>
           </div>
-          <button type="button" :disabled="isCheckingUpdates" @click="checkUpdates">
-            {{ isCheckingUpdates ? "检查中" : "检查" }}
+          <button type="button" :disabled="isCheckingUpdates || isInstallingUpdate" @click="checkUpdates">
+            {{ updateButtonLabel }}
           </button>
         </article>
 
@@ -861,7 +909,7 @@ function formatLogTime(value: string): string {
 
     <section v-else-if="activeSettingsTab === 'announcements'" class="announcements-card" aria-label="更新公告">
       <header class="announcement-head">
-        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.2.1" }}</strong>
+        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.2.2" }}</strong>
         <span>更新公告</span>
       </header>
       <article

@@ -91,6 +91,7 @@ export interface UpdateStatus {
   readonly status: DiagnosticStatus;
   readonly message: string;
   readonly checkedAt: string;
+  readonly availableVersion: string | null;
 }
 
 export interface RuntimeInfo {

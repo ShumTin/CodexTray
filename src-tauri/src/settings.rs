@@ -379,10 +379,19 @@ fn is_supported_shortcut(shortcut: &str) -> bool {
 }
 
 pub fn update_status(status: DiagnosticStatus, message: impl Into<String>) -> UpdateStatus {
+    update_status_with_version(status, message, None)
+}
+
+pub fn update_status_with_version(
+    status: DiagnosticStatus,
+    message: impl Into<String>,
+    available_version: Option<String>,
+) -> UpdateStatus {
     UpdateStatus {
         status,
         message: message.into(),
         checked_at: Utc::now().to_rfc3339(),
+        available_version,
     }
 }
 
