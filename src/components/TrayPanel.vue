@@ -74,24 +74,8 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "v1.1.0 设置页更新",
-    detail: "设置页已移除诊断页，新增公告页，用于查看当前版本的重要更新内容。",
-  },
-  {
-    title: "更新检查更稳定",
-    detail: "更新通道优先使用 jsDelivr 元数据入口，并保留 GitHub Release 入口作为备用。",
-  },
-  {
-    title: "错误日志更清楚",
-    detail: "检查更新失败时会记录底层原因，便于区分网络、TLS、代理或 GitHub 连接问题。",
-  },
-  {
-    title: "Hook 采集反馈优化",
-    detail: "开启或关闭 Hook 时会显示进行中状态，完成后立即刷新设置页显示。",
-  },
-  {
-    title: "设置首页加载修复",
-    detail: "修复首次进入设置首页时部分内容显示为空，切换标签后才恢复的问题。",
+    title: "CodexTray 图标与额度提示更新",
+    detail: "更新重新设计了 CodexTray 的应用图标与托盘图标。",
   },
 ];
 
@@ -869,7 +853,7 @@ function formatLogTime(value: string): string {
 
     <section v-else-if="activeSettingsTab === 'announcements'" class="announcements-card" aria-label="更新公告">
       <header class="announcement-head">
-        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.1.0" }}</strong>
+        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.2.0" }}</strong>
         <span>更新公告</span>
       </header>
       <article
@@ -899,7 +883,35 @@ function formatLogTime(value: string): string {
       </div>
 
       <section class="account-row" aria-label="账号状态">
-        <div class="avatar" aria-hidden="true"></div>
+        <div class="avatar" aria-hidden="true">
+          <svg viewBox="0 0 32 32" role="img">
+            <circle cx="16" cy="16" r="15" fill="#0e1420" />
+            <circle
+              cx="16"
+              cy="16"
+              r="9.8"
+              fill="none"
+              stroke="#22d3ee"
+              stroke-dasharray="44 18"
+              stroke-linecap="round"
+              stroke-width="4.8"
+              transform="rotate(126 16 16)"
+            />
+            <circle
+              cx="16"
+              cy="16"
+              r="9.8"
+              fill="none"
+              stroke="#2dd4bf"
+              stroke-dasharray="28 34"
+              stroke-linecap="round"
+              stroke-width="4.8"
+              transform="rotate(-38 16 16)"
+            />
+            <circle cx="12.2" cy="20.3" r="2.1" fill="#e5e7eb" />
+            <circle cx="21.2" cy="11.7" r="1.8" fill="#e5e7eb" />
+          </svg>
+        </div>
         <div class="account-copy">
           <h1>
             {{ accountEmail }}

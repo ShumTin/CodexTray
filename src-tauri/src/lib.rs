@@ -4,6 +4,7 @@ mod hook_stats;
 mod models;
 mod settings;
 mod token_usage;
+mod tray_status;
 
 use dashboard::DashboardState;
 use models::{
@@ -25,6 +26,7 @@ use url::Url;
 const MENU_TOGGLE_PANEL: &str = "toggle_panel";
 const MENU_SETTINGS: &str = "settings";
 const MENU_REFRESH: &str = "refresh";
+const TRAY_ID: &str = "codextray-main";
 const EVENT_DASHBOARD_REFRESH_STARTED: &str = "codextray://dashboard-refresh-started";
 const EVENT_DASHBOARD_REFRESHED: &str = "codextray://dashboard-refreshed";
 const MENU_QUIT: &str = "quit";
@@ -133,6 +135,7 @@ fn refresh_dashboard_for_app(app: &tauri::AppHandle, success_message: &'static s
 
         finish_dashboard_refresh();
         update_dashboard_window(&app, &snapshot);
+        update_tray_status(&app, &snapshot);
 
         if app.emit(EVENT_DASHBOARD_REFRESHED, snapshot).is_err() {
             settings::append_log("WARN", "刷新结果广播失败");
@@ -218,6 +221,7 @@ async fn refresh_token_activity_for_app(app: tauri::AppHandle) {
     let snapshot = dashboard::refresh_token_activity(&state).await;
     log_token_activity_refresh_outcome(&snapshot);
     update_dashboard_window(&app, &snapshot);
+    update_tray_status(&app, &snapshot);
 
     if app.emit(EVENT_DASHBOARD_REFRESHED, snapshot).is_err() {
         settings::append_log("WARN", "Token 活动刷新结果广播失败");
@@ -294,6 +298,26 @@ fn update_dashboard_window(app: &tauri::AppHandle, snapshot: &DashboardSnapshot)
 
     if window.eval(&script).is_err() {
         settings::append_log("WARN", "仪表盘窗口同步失败");
+    }
+}
+
+fn update_tray_status(app: &tauri::AppHandle, snapshot: &DashboardSnapshot) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+
+    if tray
+        .set_icon(Some(tray_status::icon_for_snapshot(snapshot)))
+        .is_err()
+    {
+        settings::append_log("WARN", "托盘额度图标更新失败");
+    }
+
+    if tray
+        .set_tooltip(Some(tray_status::tooltip_for_snapshot(snapshot)))
+        .is_err()
+    {
+        settings::append_log("WARN", "托盘提示更新失败");
     }
 }
 
@@ -584,6 +608,7 @@ async fn refresh_dashboard(
     log_dashboard_refresh_outcome("仪表盘刷新完成", &snapshot);
     finish_dashboard_refresh();
     update_dashboard_window(&app, &snapshot);
+    update_tray_status(&app, &snapshot);
     let app_for_token_activity = app.clone();
     tauri::async_runtime::spawn(async move {
         refresh_token_activity_for_app(app_for_token_activity).await;
@@ -759,9 +784,9 @@ pub fn run() {
                 .text(MENU_QUIT, "退出 CodexTray")
                 .build()?;
 
-            TrayIconBuilder::with_id("codextray-main")
+            TrayIconBuilder::with_id(TRAY_ID)
                 .menu(&tray_menu)
-                .icon(app.default_window_icon().expect("application icon").clone())
+                .icon(tray_status::default_icon())
                 .tooltip("CodexTray")
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {

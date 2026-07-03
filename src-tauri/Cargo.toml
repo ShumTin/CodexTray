@@ -1,6 +1,6 @@
 [package]
 name = "codextray"
-version = "1.1.0"
+version = "1.2.0"
 description = "CodexTray desktop tray panel"
 authors = ["CodexTray contributors"]
 edition = "2021"
