@@ -74,24 +74,24 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "正式发布 v1.0.0",
-    detail: "CodexTray 已进入正式发布版本，安装包与便携包均可在 GitHub Release 获取。",
+    title: "v1.1.0 设置页更新",
+    detail: "设置页已移除诊断页，新增公告页，用于查看当前版本的重要更新内容。",
   },
   {
-    title: "自动更新通道",
-    detail: "安装包版本已接入 Tauri updater，后续可在设置页检查新版本并校验更新包签名。",
+    title: "更新检查更稳定",
+    detail: "更新通道优先使用 jsDelivr 元数据入口，并保留 GitHub Release 入口作为备用。",
   },
   {
-    title: "账号与用量面板",
-    detail: "面板会展示 Codex 账号、额度窗口、Token 活动热力图和关键用量指标。",
+    title: "错误日志更清楚",
+    detail: "检查更新失败时会记录底层原因，便于区分网络、TLS、代理或 GitHub 连接问题。",
   },
   {
-    title: "Hook 采集",
-    detail: "设置页可写入或移除 Codex Hook 采集配置，切换时会显示明确的进行中状态。",
+    title: "Hook 采集反馈优化",
+    detail: "开启或关闭 Hook 时会显示进行中状态，完成后立即刷新设置页显示。",
   },
   {
-    title: "数据清理",
-    detail: "安装包卸载时可选择同时删除用户数据；便携版删除主程序后需手动清理用户数据目录。",
+    title: "设置首页加载修复",
+    detail: "修复首次进入设置首页时部分内容显示为空，切换标签后才恢复的问题。",
   },
 ];
 
@@ -869,7 +869,7 @@ function formatLogTime(value: string): string {
 
     <section v-else-if="activeSettingsTab === 'announcements'" class="announcements-card" aria-label="更新公告">
       <header class="announcement-head">
-        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.0.0" }}</strong>
+        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.1.0" }}</strong>
         <span>更新公告</span>
       </header>
       <article
