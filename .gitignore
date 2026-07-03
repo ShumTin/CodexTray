@@ -1,4 +1,5 @@
 .cargo/
+.wrangler/
 node_modules/
 dist/
 release/

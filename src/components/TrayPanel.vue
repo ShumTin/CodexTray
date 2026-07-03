@@ -76,8 +76,8 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "启动更新提示",
-    detail: "应用启动后如果自动检查到新版本，会弹出提示并可直接打开设置页安装，避免只在日志中记录更新结果。",
+    title: "R2 更新源",
+    detail: "自动更新切换到 download.shumtinyo.top，减少 GitHub Release 链路受代理或网络波动影响的概率。",
   },
 ];
 
