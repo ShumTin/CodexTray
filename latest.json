@@ -1,11 +1,11 @@
 {
-  "version": "1.1.0",
-  "notes": "CodexTray v1.1.0：新增公告页，优化更新检查端点和错误日志，修复设置页加载与 Hook 状态反馈。",
-  "pub_date": "2026-07-03T07:10:03Z",
+  "version": "1.2.0",
+  "notes": "CodexTray 图标与额度提示更新：更新重新设计了 CodexTray 的应用图标与托盘图标。",
+  "pub_date": "2026-07-03T08:35:10Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUOHczczc1VWpGREI4TDdjSDZ0VjNnVXRTTkVUdE1NbTk5bElHWVFCWUVUVFNMYmJISEQ0YXAybVRrSGdTMlNaY0U4eDd4MWVYclByQU1IZWtjYmZ0emU3YVRSUmppV0FVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMDYyNTg2CWZpbGU6Q29kZXhUcmF5XzEuMS4wX3g2NC1zZXR1cC5leGUKN0JMVjJDMzRteGVTMHlkbFFUTnhZTVZkU2ltVlFHc1JocUc5WkRCQUZYRWkzSm1kS1R0aEF1eThYVWFGWmpZa3A2NjJpWG5nd1dEbGpMbWxhVE1RREE9PQo=",
-      "url": "https://github.com/ShumTin/CodexTray/releases/download/v1.1.0/CodexTray_1.1.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUOHczczc1VWpGREx2UFVBeGRDZGpKQTlhMU0rbjduWmo5L3lzU011TG5pNFQvamh5cm42SUZqelk2QXpndnhjQk5LUW9HVEFlM1pYbjYwNWN0MldHMSszNVdRWkdWbWdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMDY3NjcyCWZpbGU6Q29kZXhUcmF5XzEuMi4wX3g2NC1zZXR1cC5leGUKSS9GWDJhTXc2SGZnUFc1eEhxMDVhWWYyM0w2K25kQkoxbXkrdFVQT3RRWUliSjBaSzA4bmZtdUVxUlRtaDl6bHk2NUZmbGRDWWw3OSt4OFVWMit2RHc9PQo=",
+      "url": "https://github.com/ShumTin/CodexTray/releases/download/v1.2.0/CodexTray_1.2.0_x64-setup.exe"
     }
   }
 }
