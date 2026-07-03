@@ -76,8 +76,8 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "托盘额度条恢复",
-    detail: "托盘图标重新显示动态额度条，并在额度状态未变化时跳过重复图标替换，降低后台刷新对系统托盘的影响。",
+    title: "启动更新提示",
+    detail: "应用启动后如果自动检查到新版本，会弹出提示并可直接打开设置页安装，避免只在日志中记录更新结果。",
   },
 ];
 

@@ -51,7 +51,7 @@ CodexTray 是一款面向 Windows 的 Codex 桌面托盘面板，用于快速查
 ### 下载安装
 
 1. 前往 GitHub Releases 页面下载最新版安装包或便携版压缩包。
-2. 运行 `CodexTray_1.3.2_x64-setup.exe` 并完成安装。
+2. 运行 `CodexTray_1.3.3_x64-setup.exe` 并完成安装。
 3. 启动后在系统托盘中找到 CodexTray 图标。
 4. 点击托盘图标打开面板，等待首次额度刷新完成。
 
@@ -123,7 +123,7 @@ cargo test
 
 ## 版本
 
-当前发布版本：`1.3.2`
+当前发布版本：`1.3.3`
 
 ---
 

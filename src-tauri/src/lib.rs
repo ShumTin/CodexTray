@@ -459,7 +459,8 @@ fn schedule_startup_update_check(app: &tauri::AppHandle) {
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = check_for_updates(app).await;
+        let status = check_for_updates_for_app(&app).await;
+        prompt_startup_update_if_available(app, &status).await;
     });
 }
 
@@ -691,7 +692,11 @@ async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
 
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
-    let updater = match build_updater(&app) {
+    check_for_updates_for_app(&app).await
+}
+
+async fn check_for_updates_for_app(app: &tauri::AppHandle) -> UpdateStatus {
+    let updater = match build_updater(app) {
         Ok(updater) => updater,
         Err(status) => return status,
     };
@@ -718,7 +723,11 @@ async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
 
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle) -> UpdateStatus {
-    let updater = match build_updater(&app) {
+    install_update_for_app(&app).await
+}
+
+async fn install_update_for_app(app: &tauri::AppHandle) -> UpdateStatus {
+    let updater = match build_updater(app) {
         Ok(updater) => updater,
         Err(status) => return status,
     };
@@ -761,9 +770,28 @@ async fn install_update(app: tauri::AppHandle) -> UpdateStatus {
     }
 }
 
-fn build_updater(
-    app: &tauri::AppHandle,
-) -> Result<tauri_plugin_updater::Updater, UpdateStatus> {
+async fn prompt_startup_update_if_available(app: tauri::AppHandle, status: &UpdateStatus) {
+    let Some(version) = status.available_version.clone() else {
+        return;
+    };
+
+    let prompt_result = tauri::async_runtime::spawn_blocking(move || {
+        rfd::MessageDialog::new()
+            .set_title("CodexTray 发现新版本")
+            .set_description(format!("发现新版本 {}，是否打开设置页安装？", version))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+    })
+    .await;
+
+    match prompt_result {
+        Ok(rfd::MessageDialogResult::Yes) => show_settings_window(&app),
+        Ok(_) => {}
+        Err(error) => settings::append_log("WARN", &format!("更新提示框显示失败：{}", error)),
+    }
+}
+
+fn build_updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater, UpdateStatus> {
     let config = match settings::update_channel_config(Some(app.config())) {
         Ok(config) => config,
         Err(_) => {
