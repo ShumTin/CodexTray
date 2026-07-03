@@ -4,6 +4,11 @@ export interface QuotaWindow {
   readonly resetAt: string | null;
 }
 
+export interface RateLimitResetCredits {
+  readonly availableCount: number;
+  readonly expiresAt: string | null;
+}
+
 export interface DashboardMetric {
   readonly label: string;
   readonly value: string;
@@ -44,6 +49,7 @@ export interface AccountSnapshot {
 export interface RateLimitSnapshot {
   readonly source: QuotaSourceKind;
   readonly windows: readonly QuotaWindow[];
+  readonly resetCredits: RateLimitResetCredits | null;
   readonly fetchedAt: string;
   readonly stale: boolean;
 }

@@ -26,9 +26,18 @@ pub struct QuotaWindow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RateLimitResetCredits {
+    pub available_count: u64,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RateLimitSnapshot {
     pub source: QuotaSourceKind,
     pub windows: Vec<QuotaWindow>,
+    #[serde(default)]
+    pub reset_credits: Option<RateLimitResetCredits>,
     pub fetched_at: String,
     pub stale: bool,
 }

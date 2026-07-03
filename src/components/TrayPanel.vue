@@ -76,12 +76,13 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "R2 更新源",
-    detail: "自动更新切换到 download.shumtinyo.top，减少 GitHub Release 链路受代理或网络波动影响的概率。",
+    title: "添加额度重置次数展示",
+    detail: "解析 Codex CLI 返回的 rateLimitResetCredits，在额度卡片中展示重置次数和悬停信息卡片。",
   },
 ];
 
 const quotaWindows = computed(() => snapshot.value?.quota?.windows ?? []);
+const quotaResetCredits = computed(() => snapshot.value?.quota?.resetCredits ?? null);
 const metrics = computed(() => snapshot.value?.metrics ?? []);
 const heatmapDays = computed(() => snapshot.value?.heatmapDays ?? []);
 const visibleHeatmapDays = computed(() => heatmapDays.value.slice(-224));
@@ -807,6 +808,19 @@ function formatResetAt(value: string | null): string {
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function formatResetCreditExpiresAt(value: string | null): string {
+  if (!value) {
+    return "未知";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+}
+
 function formatQuotaLabel(label: string): string {
   const parts = label.trim().split(/\s+/);
   return parts[parts.length - 1] ?? label;
@@ -1021,6 +1035,24 @@ function formatLogTime(value: string): string {
       <section class="quota-card" aria-label="额度">
         <div class="quota-heading">
           <h2>{{ quotaTitle }}</h2>
+          <span
+            v-if="quotaResetCredits"
+            class="quota-reset-pill"
+            tabindex="0"
+            aria-describedby="quota-reset-tooltip"
+          >
+            重置次数: {{ quotaResetCredits.availableCount }}
+            <span id="quota-reset-tooltip" class="quota-reset-card" role="tooltip">
+              <span class="quota-reset-card-head">
+                <span>过期时间</span>
+                <b>可用: {{ quotaResetCredits.availableCount }}</b>
+              </span>
+              <time v-if="quotaResetCredits.expiresAt">
+                {{ formatResetCreditExpiresAt(quotaResetCredits.expiresAt) }}
+              </time>
+              <strong v-else>暂无过期时间</strong>
+            </span>
+          </span>
         </div>
         <div v-if="quotaWindows.length > 0" class="quota-list">
           <article v-for="quota in quotaWindows" :key="quota.label" class="quota-row">

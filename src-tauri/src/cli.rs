@@ -11,8 +11,8 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::models::{
-    AccountSnapshot, QuotaFetchResult, QuotaSourceKind, QuotaWindow, RateLimitSnapshot,
-    TokenActivityBucket, TokenActivitySnapshot, TokenActivitySource,
+    AccountSnapshot, QuotaFetchResult, QuotaSourceKind, QuotaWindow, RateLimitResetCredits,
+    RateLimitSnapshot, TokenActivityBucket, TokenActivitySnapshot, TokenActivitySource,
 };
 
 #[derive(Debug, Clone)]
@@ -468,6 +468,7 @@ fn build_cli_result(
         .and_then(Value::as_str)
         .map(ToOwned::to_owned);
     let windows = extract_cli_windows(quota_result);
+    let reset_credits = extract_reset_credits(quota_result);
 
     if windows.is_empty() {
         return Err("CLI app-server 未返回可识别额度窗口".to_string());
@@ -487,6 +488,7 @@ fn build_cli_result(
         quota: RateLimitSnapshot {
             source: QuotaSourceKind::CodexCli,
             windows,
+            reset_credits,
             fetched_at,
             stale: false,
         },
@@ -631,6 +633,47 @@ fn append_rate_limit_window(windows: &mut Vec<QuotaWindow>, label: String, windo
     });
 }
 
+fn extract_reset_credits(value: &Value) -> Option<RateLimitResetCredits> {
+    let credits = value.get("rateLimitResetCredits")?;
+    if credits.is_null() {
+        return None;
+    }
+
+    let available_count = credits
+        .get("availableCount")
+        .or_else(|| credits.get("available_count"))
+        .and_then(parse_u64_field)?;
+    let expires_at = credits
+        .get("expiresAt")
+        .or_else(|| credits.get("expires_at"))
+        .or_else(|| credits.get("expirationTime"))
+        .and_then(parse_optional_time_field);
+
+    Some(RateLimitResetCredits {
+        available_count,
+        expires_at,
+    })
+}
+
+fn parse_optional_time_field(value: &Value) -> Option<String> {
+    if value.is_null() {
+        return None;
+    }
+
+    if let Some(timestamp) = value.as_i64() {
+        return chrono::DateTime::from_timestamp(normalize_unix_timestamp(timestamp), 0)
+            .map(|time| time.to_rfc3339());
+    }
+
+    let text = value.as_str()?;
+    if let Ok(timestamp) = text.parse::<i64>() {
+        return chrono::DateTime::from_timestamp(normalize_unix_timestamp(timestamp), 0)
+            .map(|time| time.to_rfc3339());
+    }
+
+    Some(text.to_string())
+}
+
 fn normalize_unix_timestamp(timestamp: i64) -> i64 {
     if timestamp > 10_000_000_000 {
         timestamp / 1000
@@ -742,7 +785,10 @@ mod tests {
                 "rateLimitReachedType": null
             },
             "rateLimitsByLimitId": null,
-            "rateLimitResetCredits": null
+            "rateLimitResetCredits": {
+                "availableCount": 1,
+                "expiresAt": 1_783_600_000
+            }
         });
 
         let windows = extract_cli_windows(&value);
@@ -753,6 +799,15 @@ mod tests {
         assert_eq!(windows[1].label, "Codex 7D");
         assert_eq!(windows[1].remaining_percent, 80);
         assert!(windows[1].reset_at.is_some());
+
+        let result = build_cli_result(json!({ "account": {} }), json!({ "result": value }), None)
+            .expect("CLI result should include reset credits");
+        let reset_credits = result
+            .quota
+            .reset_credits
+            .expect("reset credits should parse");
+        assert_eq!(reset_credits.available_count, 1);
+        assert!(reset_credits.expires_at.is_some());
     }
 
     #[test]

@@ -251,6 +251,7 @@ mod tests {
             quota: Some(RateLimitSnapshot {
                 source: QuotaSourceKind::CodexCli,
                 windows,
+                reset_credits: None,
                 fetched_at: "2026-07-03T00:00:00Z".to_string(),
                 stale,
             }),

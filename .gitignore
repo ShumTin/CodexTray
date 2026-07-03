@@ -5,5 +5,9 @@ dist/
 release/
 src-tauri/target/
 src-tauri/gen/schemas/
+scripts/
+
+# 发布元数据上传到 R2，不再提交到远程仓库
+latest.json
 
 *.log

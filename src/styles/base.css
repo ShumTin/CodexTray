@@ -326,6 +326,87 @@ button {
 .quota-heading {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.quota-reset-pill {
+  position: relative;
+  min-width: 82px;
+  padding: 3px 9px;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 999px;
+}
+
+.quota-reset-pill:focus-visible {
+  outline: 2px solid rgba(20, 184, 166, 0.36);
+  outline-offset: 2px;
+}
+
+.quota-reset-card {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  display: grid;
+  width: max-content;
+  min-width: 224px;
+  max-width: 260px;
+  gap: 8px;
+  padding: 16px 18px;
+  color: var(--text-strong);
+  text-align: left;
+  pointer-events: none;
+  visibility: hidden;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 14px;
+  box-shadow:
+    0 14px 32px rgba(15, 23, 42, 0.18),
+    0 4px 10px rgba(15, 23, 42, 0.08);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease,
+    visibility 0.12s ease;
+}
+
+.quota-reset-pill:hover .quota-reset-card,
+.quota-reset-pill:focus-visible .quota-reset-card {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.quota-reset-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quota-reset-card-head b {
+  padding: 3px 9px;
+  color: var(--primary-strong);
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: 999px;
+}
+
+.quota-reset-card time,
+.quota-reset-card strong {
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 800;
 }
 
 .quota-list {
