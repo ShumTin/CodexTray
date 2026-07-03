@@ -1,11 +1,11 @@
 {
-  "version": "1.2.0",
-  "notes": "CodexTray 图标与额度提示更新：更新重新设计了 CodexTray 的应用图标与托盘图标。",
-  "pub_date": "2026-07-03T08:35:10Z",
+  "version": "1.2.1",
+  "notes": "CodexTray 1.2.1：重新设计应用图标与托盘图标，桌面图标不再显示额度条；Windows 安装包仅保留 NSIS；项目按 GPL-3.0 license 开源发布。",
+  "pub_date": "2026-07-03T09:13:52Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUOHczczc1VWpGREx2UFVBeGRDZGpKQTlhMU0rbjduWmo5L3lzU011TG5pNFQvamh5cm42SUZqelk2QXpndnhjQk5LUW9HVEFlM1pYbjYwNWN0MldHMSszNVdRWkdWbWdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMDY3NjcyCWZpbGU6Q29kZXhUcmF5XzEuMi4wX3g2NC1zZXR1cC5leGUKSS9GWDJhTXc2SGZnUFc1eEhxMDVhWWYyM0w2K25kQkoxbXkrdFVQT3RRWUliSjBaSzA4bmZtdUVxUlRtaDl6bHk2NUZmbGRDWWw3OSt4OFVWMit2RHc9PQo=",
-      "url": "https://github.com/ShumTin/CodexTray/releases/download/v1.2.0/CodexTray_1.2.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUOHczczc1VWpGREFVTGF6TTJLTG5iSDgwWGRmN3JEMkRBQlMzbWdtcDRNRXZSMHhEQXQ4blVRUkV5TlVJNjEyVW1YTjk0N3BJWFlOVnNJMUhoRXBMZ3RxNmhlaEUvOXc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzMDY5OTUyCWZpbGU6Q29kZXhUcmF5XzEuMi4xX3g2NC1zZXR1cC5leGUKQUhxUHR0cmVaT0hjMjZUTExia25aUEcwSTZrRTM1VWFqSWc4VEtzL1ljOENnTEM5NHBsWWV2NXNVWlZxQjIwaFBxWmt4eEdkRm96TzBESkNPNDBaRFE9PQo=",
+      "url": "https://github.com/ShumTin/CodexTray/releases/download/v1.2.1/CodexTray_1.2.1_x64-setup.exe"
     }
   }
 }
