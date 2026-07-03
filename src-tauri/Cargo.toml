@@ -1,8 +1,9 @@
 [package]
 name = "codextray"
-version = "1.2.0"
+version = "1.2.1"
 description = "CodexTray desktop tray panel"
 authors = ["CodexTray contributors"]
+license = "GPL-3.0-only"
 edition = "2021"
 
 [lib]

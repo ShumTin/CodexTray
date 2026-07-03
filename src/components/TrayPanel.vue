@@ -74,8 +74,16 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "CodexTray 图标与额度提示更新",
-    detail: "更新重新设计了 CodexTray 的应用图标与托盘图标。",
+    title: "图标与额度提示更新",
+    detail: "重新设计应用图标与托盘图标，桌面图标不再显示额度条，额度条仅保留在运行时托盘图标中。",
+  },
+  {
+    title: "安装包发布方式调整",
+    detail: "Windows 安装包仅保留 NSIS 版本，不再提供 MSI 安装包。",
+  },
+  {
+    title: "CodexTray 开源发布",
+    detail: "项目已按 GPL-3.0 license 开源发布，并补充仓库级开发约束。",
   },
 ];
 
@@ -853,7 +861,7 @@ function formatLogTime(value: string): string {
 
     <section v-else-if="activeSettingsTab === 'announcements'" class="announcements-card" aria-label="更新公告">
       <header class="announcement-head">
-        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.2.0" }}</strong>
+        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.2.1" }}</strong>
         <span>更新公告</span>
       </header>
       <article

@@ -2,7 +2,7 @@
 
 CodexTray 是一款面向 Windows 的 Codex 桌面托盘面板，用于快速查看 Codex 账号额度、Token 活动、Hook 工作统计和更新状态。它以轻量托盘窗口运行，适合需要频繁关注 Codex 使用情况的开发者。
 
-![CodexTray 预览](https://cdn.nodeimage.com/i/K9s1xbIIWea9GgF0PA9X806YLpGtmUzX.webp)
+![CodexTray 预览](https://cdn.nodeimage.com/i/FsUYfNjkcOEKUow99Ysb5kGXj7lSeTfD.webp)
 
 ---
 
@@ -50,8 +50,8 @@ CodexTray 是一款面向 Windows 的 Codex 桌面托盘面板，用于快速查
 
 ### 下载安装
 
-1. 前往 GitHub Releases 页面下载最新版安装包。
-2. 运行 `CodexTray_1.2.0_x64-setup.exe` 并完成安装。
+1. 前往 GitHub Releases 页面下载最新版安装包或便携版压缩包。
+2. 运行 `CodexTray_1.2.1_x64-setup.exe` 并完成安装。
 3. 启动后在系统托盘中找到 CodexTray 图标。
 4. 点击托盘图标打开面板，等待首次额度刷新完成。
 
@@ -117,4 +117,10 @@ cargo test
 
 ## 版本
 
-当前发布版本：`1.2.0`
+当前发布版本：`1.2.1`
+
+---
+
+## 开源许可证
+
+CodexTray 基于 GPL-3.0 license 开源发布。详情请查看 [LICENSE](LICENSE)。
