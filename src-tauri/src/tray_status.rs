@@ -19,6 +19,34 @@ struct TrayQuotaStatus<'a> {
     stale: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayIconState {
+    Default,
+    Quota(TrayQuotaIcon),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrayQuotaIcon {
+    remaining_percent: u8,
+}
+
+pub fn icon_state_for_snapshot(snapshot: &DashboardSnapshot) -> TrayIconState {
+    tray_quota_status(snapshot)
+        .map(|status| {
+            TrayIconState::Quota(TrayQuotaIcon {
+                remaining_percent: status.window.remaining_percent,
+            })
+        })
+        .unwrap_or(TrayIconState::Default)
+}
+
+pub fn icon_for_state(state: TrayIconState) -> Image<'static> {
+    match state {
+        TrayIconState::Default => default_icon(),
+        TrayIconState::Quota(icon) => build_icon(Some(icon.remaining_percent)),
+    }
+}
+
 pub fn default_icon() -> Image<'static> {
     build_icon(None)
 }
@@ -196,6 +224,19 @@ mod tests {
         assert_eq!(
             tooltip_for_snapshot(&snapshot),
             "CodexTray - 7D 剩余额度 42%（上次成功）"
+        );
+    }
+
+    #[test]
+    fn icon_state_uses_tightest_quota_window_so_repeated_refreshes_can_skip_same_icon() {
+        let snapshot =
+            snapshot_with_quota(vec![quota_window("7D", 88), quota_window("5H", 24)], false);
+
+        assert_eq!(
+            icon_state_for_snapshot(&snapshot),
+            TrayIconState::Quota(TrayQuotaIcon {
+                remaining_percent: 24
+            })
         );
     }
 

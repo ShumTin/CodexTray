@@ -76,16 +76,8 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "托盘稳定性修复",
-    detail: "保留稳定默认托盘图标，避免后台刷新动态替换图标时触发 Windows 原生托盘崩溃。",
-  },
-  {
-    title: "自动更新源调整",
-    detail: "自动更新优先读取 GitHub Release 元数据，减少 CDN 缓存导致的版本判断延迟。",
-  },
-  {
-    title: "CLI 路径操作调整",
-    detail: "将 Codex CLI 路径选择入口合并到运行时 CLI 路径行，设置页默认保持自动探测。",
+    title: "托盘额度条恢复",
+    detail: "托盘图标重新显示动态额度条，并在额度状态未变化时跳过重复图标替换，降低后台刷新对系统托盘的影响。",
   },
 ];
 

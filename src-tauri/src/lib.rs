@@ -12,6 +12,7 @@ use models::{
     StartupStatus, UpdateStatus,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::menu::MenuBuilder;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -44,6 +45,7 @@ const DETAIL_GAP: f64 = 8.0;
 const PANEL_WORK_AREA_MARGIN: i32 = 8;
 static LAST_DASHBOARD_REFRESH_STARTED_AT: AtomicU64 = AtomicU64::new(0);
 static DASHBOARD_REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static LAST_TRAY_ICON_STATE: Mutex<Option<tray_status::TrayIconState>> = Mutex::new(None);
 
 pub fn run_hook_event_process() -> Result<(), String> {
     hook_stats::run_hook_event_process()
@@ -306,13 +308,36 @@ fn update_tray_status(app: &tauri::AppHandle, snapshot: &DashboardSnapshot) {
         return;
     };
 
-    // Windows 上后台刷新时动态替换托盘图标可能触发原生托盘层崩溃，先保留稳定默认图标。
+    update_tray_icon_if_changed(&tray, snapshot);
+
     if tray
         .set_tooltip(Some(tray_status::tooltip_for_snapshot(snapshot)))
         .is_err()
     {
         settings::append_log("WARN", "托盘提示更新失败");
     }
+}
+
+fn update_tray_icon_if_changed(tray: &tauri::tray::TrayIcon, snapshot: &DashboardSnapshot) {
+    let next_state = tray_status::icon_state_for_snapshot(snapshot);
+    let Ok(mut last_state) = LAST_TRAY_ICON_STATE.lock() else {
+        settings::append_log("WARN", "托盘图标状态锁定失败");
+        return;
+    };
+
+    if last_state.as_ref() == Some(&next_state) {
+        return;
+    }
+
+    if tray
+        .set_icon(Some(tray_status::icon_for_state(next_state)))
+        .is_err()
+    {
+        settings::append_log("WARN", "托盘额度图标更新失败");
+        return;
+    }
+
+    *last_state = Some(next_state);
 }
 
 fn log_dashboard_refresh_outcome(success_message: &str, snapshot: &DashboardSnapshot) {
