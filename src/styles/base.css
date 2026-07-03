@@ -284,7 +284,7 @@ button {
 }
 
 .settings-card,
-.diagnostics-card,
+.announcements-card,
 .logs-card {
   position: relative;
   z-index: 1;
@@ -300,7 +300,7 @@ button {
 }
 
 .settings-page .settings-card,
-.settings-page .diagnostics-card,
+.settings-page .announcements-card,
 .settings-page .logs-card {
   height: calc(100% - 37px);
   border-top: 0;
@@ -429,14 +429,14 @@ button {
 }
 
 .settings-grid,
-.diagnostics-card,
+.announcements-card,
 .logs-card {
   display: grid;
   gap: 9px;
 }
 
 .setting-row,
-.diagnostic-row,
+.announcement-row,
 .log-row {
   display: grid;
   align-items: center;
@@ -448,7 +448,7 @@ button {
 }
 
 :root[data-theme="dark"] .setting-row,
-:root[data-theme="dark"] .diagnostic-row,
+:root[data-theme="dark"] .announcement-row,
 :root[data-theme="dark"] .log-row {
   background: rgba(15, 23, 42, 0.74);
   border-color: rgba(71, 85, 105, 0.8);
@@ -460,14 +460,14 @@ button {
 }
 
 .setting-row strong,
-.diagnostic-row strong,
+.announcement-row strong,
 .log-row strong {
   color: var(--text-strong);
   font-size: 13px;
 }
 
 .setting-row span,
-.diagnostic-row span,
+.announcement-row span,
 .log-row span {
   display: block;
   min-width: 0;
@@ -568,29 +568,38 @@ button {
   white-space: nowrap;
 }
 
-.diagnostics-card {
+.announcements-card {
   align-content: start;
 }
 
-.diagnostic-row {
-  grid-template-columns: 118px minmax(0, 1fr);
+.announcement-head {
+  display: grid;
+  gap: 4px;
+  padding: 12px 12px 13px;
+  background: linear-gradient(135deg, rgba(224, 237, 255, 0.92), rgba(240, 253, 250, 0.92));
+  border: 1px solid rgba(147, 197, 253, 0.52);
+  border-radius: 8px;
 }
 
-.diagnostic-row span {
+.announcement-head strong {
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.announcement-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.announcement-row {
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.announcement-row span {
   margin-top: 0;
-}
-
-.status-ok {
-  border-left: 4px solid #22c55e;
-}
-
-.status-warning,
-.status-skipped {
-  border-left: 4px solid #f59e0b;
-}
-
-.status-error {
-  border-left: 4px solid #f43f5e;
+  white-space: normal;
 }
 
 .logs-card {

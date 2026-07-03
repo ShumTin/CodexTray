@@ -4,7 +4,6 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type {
   DashboardSnapshot,
-  DiagnosticItem,
   HeatmapDay,
   HeatmapMode,
   HookDayStats,
@@ -26,6 +25,11 @@ interface DetailStat {
   readonly tone: string;
 }
 
+interface AnnouncementItem {
+  readonly title: string;
+  readonly detail: string;
+}
+
 declare global {
   interface Window {
     __codexTrayDashboardSnapshot?: DashboardSnapshot;
@@ -43,7 +47,7 @@ const dashboardRefreshedEvent = "codextray://dashboard-refreshed";
 const snapshot = ref<DashboardSnapshot | null>(null);
 const settingsSnapshot = ref<SettingsSnapshot | null>(null);
 const logs = ref<readonly LogEntry[]>([]);
-const activeSettingsTab = ref<"settings" | "diagnostics" | "logs">("settings");
+const activeSettingsTab = ref<"settings" | "announcements" | "logs">("settings");
 const heatmapMode = ref<HeatmapMode>("daily");
 const hoveredHeatmapDate = ref<string | null>(null);
 const detailSnapshot = ref<HeatmapDetailPayload | null>(null);
@@ -51,13 +55,13 @@ const shortcutDraft = ref("Ctrl+Shift+C");
 const copiedPath = ref<string | null>(null);
 const isCheckingUpdates = ref(false);
 const isDashboardRefreshing = ref(false);
+const hookToggleTarget = ref<"enable" | "disable" | null>(null);
 let unlistenDashboardRefreshStarted: UnlistenFn | undefined;
 let unlistenDashboardRefresh: UnlistenFn | undefined;
 let hasDashboardRefreshStartedDomListener = false;
 let hasDashboardDomListener = false;
 let isRefreshingDashboard = false;
 let isLoadingSettings = false;
-let hasLoadedDiagnostics = false;
 const heatmapModes: readonly { label: string; value: HeatmapMode }[] = [
   { label: "每日", value: "daily" },
   { label: "每周", value: "weekly" },
@@ -65,22 +69,35 @@ const heatmapModes: readonly { label: string; value: HeatmapMode }[] = [
 ];
 const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.value }[] = [
   { label: "设置", value: "settings" },
-  { label: "诊断", value: "diagnostics" },
+  { label: "公告", value: "announcements" },
   { label: "日志", value: "logs" },
+];
+const announcementItems: readonly AnnouncementItem[] = [
+  {
+    title: "正式发布 v1.0.0",
+    detail: "CodexTray 已进入正式发布版本，安装包与便携包均可在 GitHub Release 获取。",
+  },
+  {
+    title: "自动更新通道",
+    detail: "安装包版本已接入 Tauri updater，后续可在设置页检查新版本并校验更新包签名。",
+  },
+  {
+    title: "账号与用量面板",
+    detail: "面板会展示 Codex 账号、额度窗口、Token 活动热力图和关键用量指标。",
+  },
+  {
+    title: "Hook 采集",
+    detail: "设置页可写入或移除 Codex Hook 采集配置，切换时会显示明确的进行中状态。",
+  },
+  {
+    title: "数据清理",
+    detail: "安装包卸载时可选择同时删除用户数据；便携版删除主程序后需手动清理用户数据目录。",
+  },
 ];
 
 const quotaWindows = computed(() => snapshot.value?.quota?.windows ?? []);
 const metrics = computed(() => snapshot.value?.metrics ?? []);
 const heatmapDays = computed(() => snapshot.value?.heatmapDays ?? []);
-const diagnosticItems = computed<readonly DiagnosticItem[]>(() => {
-  const diagnostics = snapshot.value?.diagnostics;
-
-  if (!diagnostics) {
-    return [];
-  }
-
-  return [diagnostics.cliProbe, diagnostics.cliAppServer, diagnostics.tokenActivity];
-});
 const visibleHeatmapDays = computed(() => heatmapDays.value.slice(-224));
 const heatmapMaxValue = computed(() =>
   Math.max(...visibleHeatmapDays.value.map((day) => heatmapValue(day)), 0),
@@ -128,14 +145,33 @@ const statusLabel = computed(() =>
 const quotaTitle = computed(() => (snapshot.value?.quota?.stale ? "Codex（上次成功）" : "Codex"));
 const startupStatus = computed(() => settingsSnapshot.value?.startup);
 const hookStatus = computed(() => settingsSnapshot.value?.hook);
+const hookMessage = computed(() => {
+  if (hookToggleTarget.value === "enable") {
+    return "正在写入 Hook 采集";
+  }
+
+  if (hookToggleTarget.value === "disable") {
+    return "正在移除 Hook 采集";
+  }
+
+  return hookStatus.value?.message ?? "读取中";
+});
+const hookButtonLabel = computed(() => {
+  if (hookToggleTarget.value === "enable") {
+    return "启动中";
+  }
+
+  if (hookToggleTarget.value === "disable") {
+    return "关闭中";
+  }
+
+  return hookStatus.value?.enabled ? "关闭" : "开启";
+});
 const updateStatus = computed(() => settingsSnapshot.value?.update);
 const updateMessage = computed(() =>
   isCheckingUpdates.value ? "正在检查更新" : (updateStatus.value?.message ?? "等待检查"),
 );
 const runtimeInfo = computed(() => settingsSnapshot.value?.runtime);
-const updateDiagnosticClass = computed(() =>
-  diagnosticClass(updateStatus.value ?? { status: "skipped", message: "", checkedAt: "" }),
-);
 
 onMounted(() => {
   if (isDetailView) {
@@ -351,15 +387,6 @@ function setSettingsTab(tab: typeof activeSettingsTab.value): void {
   if (tab === "settings") {
     void loadSettingsSnapshot();
   }
-
-  if (tab === "diagnostics") {
-    if (!hasLoadedDiagnostics) {
-      hasLoadedDiagnostics = true;
-      void loadSnapshot();
-    }
-
-    void loadSettingsSnapshot();
-  }
 }
 
 async function saveShortcut(): Promise<void> {
@@ -382,14 +409,25 @@ async function toggleStartup(): Promise<void> {
 }
 
 async function toggleHook(): Promise<void> {
-  const enabled = !(hookStatus.value?.enabled ?? false);
-  const hook = await invoke<SettingsSnapshot["hook"]>("set_hook_enabled", { enabled });
-
-  if (settingsSnapshot.value) {
-    settingsSnapshot.value = { ...settingsSnapshot.value, hook };
+  if (hookToggleTarget.value !== null) {
+    return;
   }
 
-  await loadRecentLogs();
+  const enabled = !(hookStatus.value?.enabled ?? false);
+  hookToggleTarget.value = enabled ? "enable" : "disable";
+
+  try {
+    const hook = await invoke<SettingsSnapshot["hook"]>("set_hook_enabled", { enabled });
+
+    if (settingsSnapshot.value) {
+      settingsSnapshot.value = { ...settingsSnapshot.value, hook };
+    }
+
+    await loadSettingsSnapshot();
+    await loadRecentLogs();
+  } finally {
+    hookToggleTarget.value = null;
+  }
 }
 
 async function checkUpdates(): Promise<void> {
@@ -708,10 +746,6 @@ function formatQuotaLabel(label: string): string {
   return parts[parts.length - 1] ?? label;
 }
 
-function diagnosticClass(item: DiagnosticItem | UpdateStatus): string {
-  return `status-${item.status}`;
-}
-
 function formatLogTime(value: string): string {
   const date = new Date(value);
 
@@ -797,10 +831,10 @@ function formatLogTime(value: string): string {
         <article class="setting-row">
           <div>
             <strong>Hook 采集</strong>
-            <span>{{ hookStatus?.message ?? "读取中" }}</span>
+            <span>{{ hookMessage }}</span>
           </div>
-          <button type="button" @click="toggleHook">
-            {{ hookStatus?.enabled ? "关闭" : "开启" }}
+          <button type="button" :disabled="hookToggleTarget !== null" @click="toggleHook">
+            {{ hookButtonLabel }}
           </button>
         </article>
       </div>
@@ -833,19 +867,18 @@ function formatLogTime(value: string): string {
       </dl>
     </section>
 
-    <section v-else-if="activeSettingsTab === 'diagnostics'" class="diagnostics-card" aria-label="诊断">
+    <section v-else-if="activeSettingsTab === 'announcements'" class="announcements-card" aria-label="更新公告">
+      <header class="announcement-head">
+        <strong>CodexTray v{{ runtimeInfo?.appVersion ?? "1.0.0" }}</strong>
+        <span>更新公告</span>
+      </header>
       <article
-        v-for="item in diagnosticItems"
-        :key="item.label"
-        class="diagnostic-row"
-        :class="diagnosticClass(item)"
+        v-for="item in announcementItems"
+        :key="item.title"
+        class="announcement-row"
       >
-        <strong>{{ item.label }}</strong>
-        <span>{{ item.message }}</span>
-      </article>
-      <article class="diagnostic-row" :class="updateDiagnosticClass">
-        <strong>自动更新</strong>
-        <span>{{ updateStatus?.message ?? "未检查" }}</span>
+        <strong>{{ item.title }}</strong>
+        <span>{{ item.detail }}</span>
       </article>
     </section>
 

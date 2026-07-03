@@ -51,7 +51,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/ShumTin/CodexTray/releases/latest/download/latest.json"
+        "https://raw.githubusercontent.com/ShumTin/CodexTray/main/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDNTQ4RTUzQjdCQzNGQwpSV1Q4dzNzNzVVakZETC9PdzlTTjQxaXJVUVFxM2FSUVZTUktUUWh3czFyZkNBTXdMZ0JjblFXQgo="
     }

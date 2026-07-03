@@ -7,8 +7,8 @@ mod token_usage;
 
 use dashboard::DashboardState;
 use models::{
-    AppSettings, DashboardSnapshot, DiagnosticStatus, DiagnosticsSnapshot, HookStatus, LogEntry,
-    SettingsSnapshot, StartupStatus, UpdateStatus,
+    AppSettings, DashboardSnapshot, DiagnosticStatus, HookStatus, LogEntry, SettingsSnapshot,
+    StartupStatus, UpdateStatus,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -593,11 +593,6 @@ async fn refresh_dashboard(
 }
 
 #[tauri::command]
-fn get_diagnostics(state: State<'_, DashboardState>) -> DiagnosticsSnapshot {
-    state.cached_snapshot().diagnostics
-}
-
-#[tauri::command]
 async fn get_settings_snapshot(app: tauri::AppHandle) -> SettingsSnapshot {
     settings::settings_snapshot(Some(app.config())).await
 }
@@ -661,7 +656,7 @@ async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
     {
         Ok(updater) => updater,
         Err(error) => {
-            let message = format!("更新检查初始化失败：{}", error);
+            let message = format!("更新检查初始化失败：{}", error_details(&error));
             settings::append_log("ERROR", &message);
             return settings::update_status(DiagnosticStatus::Error, message);
         }
@@ -686,7 +681,7 @@ async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
                     settings::update_status(DiagnosticStatus::Ok, message)
                 }
                 Err(error) => {
-                    let message = format!("更新安装失败：{}", error);
+                    let message = format!("更新安装失败：{}", error_details(&error));
                     settings::append_log("ERROR", &message);
                     settings::update_status(DiagnosticStatus::Error, message)
                 }
@@ -698,11 +693,24 @@ async fn check_for_updates(app: tauri::AppHandle) -> UpdateStatus {
             settings::update_status(DiagnosticStatus::Ok, message)
         }
         Err(error) => {
-            let message = format!("更新检查失败：{}", error);
+            let message = format!("更新检查失败：{}", error_details(&error));
             settings::append_log("ERROR", &message);
             settings::update_status(DiagnosticStatus::Error, message)
         }
     }
+}
+
+fn error_details(error: &dyn std::error::Error) -> String {
+    let mut message = error.to_string();
+    let mut source = error.source();
+
+    while let Some(error) = source {
+        message.push_str("；原因：");
+        message.push_str(&error.to_string());
+        source = error.source();
+    }
+
+    message
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -790,7 +798,6 @@ pub fn run() {
             hide_heatmap_detail,
             get_dashboard_snapshot,
             refresh_dashboard,
-            get_diagnostics,
             get_settings_snapshot,
             set_global_shortcut,
             get_recent_logs,
