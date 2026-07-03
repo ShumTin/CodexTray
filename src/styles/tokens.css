@@ -1,0 +1,36 @@
+:root {
+  color: #111827;
+  font-family:
+    Inter, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui,
+    sans-serif;
+  background: transparent;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --panel-border: #ffffff;
+  --panel-surface: #e4f0fb;
+  --card-surface: #ffffff;
+  --muted: #64748b;
+  --quiet: #94a3b8;
+  --primary: #14b8a6;
+  --primary-strong: #0f766e;
+  --accent: #60a5fa;
+  --control-surface: #f8fafc;
+  --text-strong: #111827;
+  --text-inverse: #f8fafc;
+}
+
+:root[data-theme="dark"] {
+  color: #f8fafc;
+  --panel-border: #334155;
+  --panel-surface: #0f172a;
+  --card-surface: #182235;
+  --muted: #cbd5e1;
+  --quiet: #94a3b8;
+  --primary: #2dd4bf;
+  --primary-strong: #99f6e4;
+  --accent: #93c5fd;
+  --control-surface: #0f172a;
+  --text-strong: #f8fafc;
+  --text-inverse: #111827;
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CodexTray",
+  "mainBinaryName": "CodexTray",
+  "version": "1.0.0",
+  "identifier": "app.codextray.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "CodexTray",
+        "width": 652,
+        "height": 500,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "shadow": false,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis/installer-hooks.nsh"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ShumTin/CodexTray/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDNTQ4RTUzQjdCQzNGQwpSV1Q4dzNzNzVVakZETC9PdzlTTjQxaXJVUVFxM2FSUVZTUktUUWh3czFyZkNBTXdMZ0JjblFXQgo="
+    }
+  }
+}
