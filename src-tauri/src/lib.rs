@@ -306,13 +306,7 @@ fn update_tray_status(app: &tauri::AppHandle, snapshot: &DashboardSnapshot) {
         return;
     };
 
-    if tray
-        .set_icon(Some(tray_status::icon_for_snapshot(snapshot)))
-        .is_err()
-    {
-        settings::append_log("WARN", "托盘额度图标更新失败");
-    }
-
+    // Windows 上后台刷新时动态替换托盘图标可能触发原生托盘层崩溃，先保留稳定默认图标。
     if tray
         .set_tooltip(Some(tray_status::tooltip_for_snapshot(snapshot)))
         .is_err()

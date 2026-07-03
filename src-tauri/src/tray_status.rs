@@ -19,10 +19,6 @@ struct TrayQuotaStatus<'a> {
     stale: bool,
 }
 
-pub fn icon_for_snapshot(snapshot: &DashboardSnapshot) -> Image<'static> {
-    build_icon(tray_quota_status(snapshot).map(|status| status.window.remaining_percent))
-}
-
 pub fn default_icon() -> Image<'static> {
     build_icon(None)
 }

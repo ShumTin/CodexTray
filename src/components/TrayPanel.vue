@@ -76,28 +76,16 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "Codex CLI 路径设置",
-    detail: "设置页支持手动选择 Codex CLI 路径，并会在保存前验证所选 CLI 是否可启动。",
+    title: "托盘稳定性修复",
+    detail: "保留稳定默认托盘图标，避免后台刷新动态替换图标时触发 Windows 原生托盘崩溃。",
   },
   {
-    title: "VS Code Codex 插件识别",
-    detail: "自动探测新增 VS Code Codex 插件目录，未配置路径时也能优先找到插件内置 CLI。",
+    title: "自动更新源调整",
+    detail: "自动更新优先读取 GitHub Release 元数据，减少 CDN 缓存导致的版本判断延迟。",
   },
   {
-    title: "图标与额度提示更新",
-    detail: "重新设计应用图标与托盘图标，桌面图标不再显示额度条，额度条仅保留在运行时托盘图标中。",
-  },
-  {
-    title: "安装包发布方式调整",
-    detail: "Windows 安装包仅保留 NSIS 版本，不再提供 MSI 安装包。",
-  },
-  {
-    title: "更新安装确认机制",
-    detail: "启动和手动检查更新时只提示新版本，需用户确认后才会下载安装。",
-  },
-  {
-    title: "CodexTray 开源发布",
-    detail: "项目已按 GPL-3.0 license 开源发布，并补充仓库级开发约束。",
+    title: "CLI 路径操作调整",
+    detail: "将 Codex CLI 路径选择入口合并到运行时 CLI 路径行，设置页默认保持自动探测。",
   },
 ];
 
@@ -896,21 +884,6 @@ function formatLogTime(value: string): string {
 
         <article class="setting-row">
           <div>
-            <strong>Codex CLI 路径</strong>
-            <span>{{ settingsSnapshot?.settings.codexCliPath ?? "自动探测" }}</span>
-          </div>
-          <div class="setting-actions">
-            <button type="button" :disabled="isChoosingCliPath" @click="chooseCodexCliPath">
-              {{ isChoosingCliPath ? "选择中" : "选择" }}
-            </button>
-            <button type="button" :disabled="!settingsSnapshot?.settings.codexCliPath" @click="clearCodexCliPath">
-              自动
-            </button>
-          </div>
-        </article>
-
-        <article class="setting-row">
-          <div>
             <strong>检查更新</strong>
             <span>{{ updateMessage }}</span>
           </div>
@@ -952,9 +925,21 @@ function formatLogTime(value: string): string {
         <div>
           <dt>CLI 路径</dt>
           <dd>
-            <button type="button" @click="copyPath(runtimeInfo?.cliPath)">
-              {{ pathWasCopied(runtimeInfo?.cliPath) ? "已复制" : (runtimeInfo?.cliPath ?? "未找到") }}
-            </button>
+            <span class="runtime-path-actions">
+              <button type="button" @click="copyPath(runtimeInfo?.cliPath)">
+                {{ pathWasCopied(runtimeInfo?.cliPath) ? "已复制" : (runtimeInfo?.cliPath ?? "未找到") }}
+              </button>
+              <button type="button" :disabled="isChoosingCliPath" @click="chooseCodexCliPath">
+                {{ isChoosingCliPath ? "选择中" : "选择" }}
+              </button>
+              <button
+                v-if="settingsSnapshot?.settings.codexCliPath"
+                type="button"
+                @click="clearCodexCliPath"
+              >
+                自动
+              </button>
+            </span>
           </dd>
         </div>
         <div>

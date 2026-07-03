@@ -495,15 +495,12 @@ button {
   gap: 6px;
 }
 
-.setting-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.setting-actions button {
-  min-width: 44px;
+.shortcut-form button,
+.setting-row > button,
+.runtime-path-actions button:not(:first-child) {
+  width: 44px;
+  padding: 0;
+  text-align: center;
 }
 
 .shortcut-form input {
@@ -578,6 +575,22 @@ button {
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.runtime-path-actions {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.runtime-path-actions button:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.runtime-path-actions button:not(:first-child) {
+  flex: 0 0 auto;
+  text-align: center;
 }
 
 .announcements-card {
