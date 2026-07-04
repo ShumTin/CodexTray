@@ -245,6 +245,7 @@ pub async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
         Vec::new()
     };
     let mut config = read_hooks_config(&path)?;
+    normalize_hooks_config(&mut config);
 
     if enabled {
         install_codextray_hooks(&mut config, &exe);
@@ -785,7 +786,7 @@ fn matching_hook_for_event<'a>(
         .iter()
         .copied()
         .filter(|hook| {
-            hook.get("eventName").and_then(Value::as_str) == Some(event)
+            hook_event_matches(hook, event)
                 && hook
                     .get("command")
                     .and_then(Value::as_str)
@@ -795,7 +796,7 @@ fn matching_hook_for_event<'a>(
         .find(|hook| hook_source_matches(hook, hooks_path))
         .or_else(|| {
             hooks.iter().copied().find(|hook| {
-                hook.get("eventName").and_then(Value::as_str) == Some(event)
+                hook_event_matches(hook, event)
                     && hook
                         .get("command")
                         .and_then(Value::as_str)
@@ -803,6 +804,21 @@ fn matching_hook_for_event<'a>(
                         .unwrap_or(false)
             })
         })
+}
+
+fn hook_event_matches(hook: &Value, event: &str) -> bool {
+    hook.get("eventName")
+        .and_then(Value::as_str)
+        .map(|value| normalized_event_name(value) == normalized_event_name(event))
+        .unwrap_or(false)
+}
+
+fn normalized_event_name(value: &str) -> String {
+    value
+        .chars()
+        .filter(|value| !matches!(value, '_' | '-' | ' '))
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 fn hook_is_managed_codextray(hook: &Value, exe: &Path, hooks_path: &Path) -> bool {
@@ -868,6 +884,54 @@ fn install_codextray_hooks(config: &mut Value, exe: &Path) {
         groups.push(serde_json::json!({
             "hooks": [codextray_hook_entry(exe)]
         }));
+    }
+}
+
+fn normalize_hooks_config(config: &mut Value) {
+    let root = config_object_mut(config);
+    let mut legacy_events = Vec::new();
+
+    for event in CODEX_HOOK_EVENTS {
+        if let Some(value) = root.remove(event) {
+            legacy_events.push((event, value));
+        }
+    }
+
+    if legacy_events.is_empty() {
+        return;
+    }
+
+    let hooks_value = root
+        .entry("hooks".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !hooks_value.is_object() {
+        *hooks_value = Value::Object(Map::new());
+    }
+    let hooks_root = hooks_value
+        .as_object_mut()
+        .expect("hooks root should be an object");
+
+    for (event, value) in legacy_events {
+        let Value::Array(entries) = value else {
+            continue;
+        };
+        let event_groups = hooks_root
+            .entry(event.to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if !event_groups.is_array() {
+            *event_groups = Value::Array(Vec::new());
+        }
+        let groups = event_groups
+            .as_array_mut()
+            .expect("event entry should be an array");
+
+        for entry in entries {
+            if entry.get("hooks").and_then(Value::as_array).is_some() {
+                groups.push(entry);
+            } else {
+                groups.push(serde_json::json!({ "hooks": [entry] }));
+            }
+        }
     }
 }
 
@@ -1137,11 +1201,11 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        codex_hooks_globally_disabled, hooks_config_has_codextray, install_codextray_hooks,
-        is_supported_shortcut, parse_log_line, parse_reg_query_value, remove_codextray_hooks,
-        update_channel_config, updater_config_endpoint_from_value,
-        updater_config_pubkey_from_value, CODEX_HOOK_EVENTS, UPDATE_ENDPOINT_ENV,
-        UPDATE_PUBKEY_ENV,
+        codex_hooks_globally_disabled, hook_validation_message, hooks_config_has_codextray,
+        install_codextray_hooks, is_supported_shortcut, normalize_hooks_config, parse_log_line,
+        parse_reg_query_value, remove_codextray_hooks, update_channel_config,
+        updater_config_endpoint_from_value, updater_config_pubkey_from_value, CODEX_HOOK_EVENTS,
+        UPDATE_ENDPOINT_ENV, UPDATE_PUBKEY_ENV,
     };
 
     #[test]
@@ -1222,6 +1286,81 @@ mod tests {
     }
 
     #[test]
+    fn migrates_legacy_top_level_hooks_so_codex_can_parse_the_config() {
+        let mut config = json!({
+            "PreToolUse": [
+                {
+                    "type": "command",
+                    "command": "python legacy.py",
+                    "args": ["--flag"]
+                }
+            ],
+            "hooks": {
+                "Stop": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python existing.py"
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        normalize_hooks_config(&mut config);
+
+        assert!(config.get("PreToolUse").is_none());
+        let migrated = config
+            .get("hooks")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|root| root.get("PreToolUse"))
+            .and_then(serde_json::Value::as_array)
+            .and_then(|groups| groups.first())
+            .and_then(|group| group.get("hooks"))
+            .and_then(serde_json::Value::as_array)
+            .and_then(|hooks| hooks.first())
+            .expect("legacy hook should move into grouped hooks");
+        assert_eq!(
+            migrated.get("command").and_then(serde_json::Value::as_str),
+            Some("python legacy.py")
+        );
+    }
+
+    #[test]
+    fn accepts_codex_lower_camel_event_names_when_validating_hooks() {
+        let exe = Path::new(r"D:\Tools\CodexTray\CodexTray.exe");
+        let hooks_path = Path::new(r"C:\Users\person\.codex\hooks.json");
+        let hooks = CODEX_HOOK_EVENTS
+            .iter()
+            .map(|event| {
+                json!({
+                    "eventName": lower_first(event),
+                    "command": "\"D:\\Tools\\CodexTray\\CodexTray.exe\" --hook-event",
+                    "sourcePath": "C:\\Users\\person\\.codex\\hooks.json",
+                    "enabled": true,
+                    "trustStatus": "trusted"
+                })
+            })
+            .collect::<Vec<_>>();
+        let response = json!({
+            "result": {
+                "data": [
+                    {
+                        "cwd": "C:\\Users\\person",
+                        "hooks": hooks,
+                        "warnings": [],
+                        "errors": []
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(hook_validation_message(&response, exe, hooks_path), None);
+    }
+
+    #[test]
     fn removes_only_codextray_hook_entries_from_existing_config() {
         let exe = Path::new(r"D:\WorkSpace\CodexTray\CodexTray.exe");
         let mut config = json!({
@@ -1276,5 +1415,14 @@ mod tests {
         });
 
         assert!(codex_hooks_globally_disabled(&config));
+    }
+
+    fn lower_first(value: &str) -> String {
+        let mut chars = value.chars();
+        let Some(first) = chars.next() else {
+            return String::new();
+        };
+
+        first.to_lowercase().collect::<String>() + chars.as_str()
     }
 }

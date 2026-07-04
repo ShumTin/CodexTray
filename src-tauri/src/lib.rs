@@ -33,6 +33,7 @@ const EVENT_DASHBOARD_REFRESHED: &str = "codextray://dashboard-refreshed";
 const MENU_QUIT: &str = "quit";
 const AUTO_REFRESH_INTERVAL_SECONDS: u64 = 60;
 const AUTO_REFRESH_CHECK_SECONDS: u64 = 5;
+const AUTO_UPDATE_CHECK_INTERVAL_SECONDS: u64 = 60 * 60;
 const STARTUP_REFRESH_DELAY_SECONDS: u64 = 3;
 const PANEL_HEIGHT: f64 = 468.0;
 const PANEL_SHADOW_MARGIN: f64 = 16.0;
@@ -46,6 +47,11 @@ const PANEL_WORK_AREA_MARGIN: i32 = 8;
 static LAST_DASHBOARD_REFRESH_STARTED_AT: AtomicU64 = AtomicU64::new(0);
 static DASHBOARD_REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static LAST_TRAY_ICON_STATE: Mutex<Option<tray_status::TrayIconState>> = Mutex::new(None);
+
+enum DashboardRefreshLog {
+    Record(&'static str),
+    Silent,
+}
 
 pub fn run_hook_event_process() -> Result<(), String> {
     hook_stats::run_hook_event_process()
@@ -110,7 +116,7 @@ fn schedule_startup_dashboard_refresh(app: &tauri::AppHandle) {
 
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(STARTUP_REFRESH_DELAY_SECONDS)).await;
-        refresh_dashboard_for_app(&app, "启动刷新完成");
+        refresh_dashboard_silently_for_app(&app);
     });
 }
 
@@ -120,10 +126,18 @@ fn refresh_dashboard_if_empty(app: &tauri::AppHandle) {
         return;
     }
 
-    refresh_dashboard_for_app(app, "面板打开刷新完成");
+    refresh_dashboard_silently_for_app(app);
 }
 
 fn refresh_dashboard_for_app(app: &tauri::AppHandle, success_message: &'static str) {
+    refresh_dashboard_with_log(app, DashboardRefreshLog::Record(success_message));
+}
+
+fn refresh_dashboard_silently_for_app(app: &tauri::AppHandle) {
+    refresh_dashboard_with_log(app, DashboardRefreshLog::Silent);
+}
+
+fn refresh_dashboard_with_log(app: &tauri::AppHandle, log: DashboardRefreshLog) {
     if !begin_dashboard_refresh(app) {
         return;
     }
@@ -133,17 +147,22 @@ fn refresh_dashboard_for_app(app: &tauri::AppHandle, success_message: &'static s
     tauri::async_runtime::spawn(async move {
         let state = app.state::<DashboardState>();
         let snapshot = dashboard::refresh_dashboard(&state).await;
-        log_dashboard_refresh_outcome(success_message, &snapshot);
+        log_dashboard_refresh_outcome(&log, &snapshot);
 
         finish_dashboard_refresh();
         update_dashboard_window(&app, &snapshot);
         update_tray_status(&app, &snapshot);
 
-        if app.emit(EVENT_DASHBOARD_REFRESHED, snapshot).is_err() {
+        if app.emit(EVENT_DASHBOARD_REFRESHED, snapshot).is_err()
+            && matches!(&log, DashboardRefreshLog::Record(_))
+        {
             settings::append_log("WARN", "刷新结果广播失败");
         }
 
-        refresh_token_activity_for_app(app).await;
+        match log {
+            DashboardRefreshLog::Record(_) => refresh_token_activity_for_app(app).await,
+            DashboardRefreshLog::Silent => refresh_token_activity_silently_for_app(app).await,
+        }
     });
 }
 
@@ -158,7 +177,7 @@ fn schedule_periodic_dashboard_refresh(app: &tauri::AppHandle) {
             interval.tick().await;
 
             if seconds_since_last_dashboard_refresh() >= AUTO_REFRESH_INTERVAL_SECONDS {
-                refresh_dashboard_for_app(&app, "自动刷新完成");
+                refresh_dashboard_silently_for_app(&app);
             }
         }
     });
@@ -219,13 +238,23 @@ fn notify_dashboard_refresh_started(app: &tauri::AppHandle) {
 }
 
 async fn refresh_token_activity_for_app(app: tauri::AppHandle) {
+    refresh_token_activity_with_log(app, true).await;
+}
+
+async fn refresh_token_activity_silently_for_app(app: tauri::AppHandle) {
+    refresh_token_activity_with_log(app, false).await;
+}
+
+async fn refresh_token_activity_with_log(app: tauri::AppHandle, should_log: bool) {
     let state = app.state::<DashboardState>();
     let snapshot = dashboard::refresh_token_activity(&state).await;
-    log_token_activity_refresh_outcome(&snapshot);
+    if should_log {
+        log_token_activity_refresh_outcome(&snapshot);
+    }
     update_dashboard_window(&app, &snapshot);
     update_tray_status(&app, &snapshot);
 
-    if app.emit(EVENT_DASHBOARD_REFRESHED, snapshot).is_err() {
+    if app.emit(EVENT_DASHBOARD_REFRESHED, snapshot).is_err() && should_log {
         settings::append_log("WARN", "Token 活动刷新结果广播失败");
     }
 }
@@ -340,7 +369,11 @@ fn update_tray_icon_if_changed(tray: &tauri::tray::TrayIcon, snapshot: &Dashboar
     *last_state = Some(next_state);
 }
 
-fn log_dashboard_refresh_outcome(success_message: &str, snapshot: &DashboardSnapshot) {
+fn log_dashboard_refresh_outcome(log: &DashboardRefreshLog, snapshot: &DashboardSnapshot) {
+    let DashboardRefreshLog::Record(success_message) = log else {
+        return;
+    };
+
     if let Some(quota) = snapshot.quota.as_ref().filter(|quota| !quota.stale) {
         settings::append_log(
             "INFO",
@@ -459,8 +492,27 @@ fn schedule_startup_update_check(app: &tauri::AppHandle) {
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let status = check_for_updates_for_app(&app).await;
+        let status = check_for_updates_quietly_for_app(&app).await;
         prompt_startup_update_if_available(app, &status).await;
+    });
+}
+
+fn schedule_periodic_update_check(app: &tauri::AppHandle) {
+    if settings::update_channel_config(Some(app.config())).is_err() {
+        return;
+    }
+
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut interval =
+            tokio::time::interval(Duration::from_secs(AUTO_UPDATE_CHECK_INTERVAL_SECONDS));
+        interval.tick().await;
+
+        loop {
+            interval.tick().await;
+            let status = check_for_updates_quietly_for_app(&app).await;
+            prompt_startup_update_if_available(app.clone(), &status).await;
+        }
     });
 }
 
@@ -625,7 +677,7 @@ async fn refresh_dashboard(
     }
 
     let snapshot = dashboard::refresh_dashboard(&state).await;
-    log_dashboard_refresh_outcome("仪表盘刷新完成", &snapshot);
+    log_dashboard_refresh_outcome(&DashboardRefreshLog::Record("仪表盘刷新完成"), &snapshot);
     finish_dashboard_refresh();
     update_dashboard_window(&app, &snapshot);
     update_tray_status(&app, &snapshot);
@@ -718,6 +770,26 @@ async fn check_for_updates_for_app(app: &tauri::AppHandle) -> UpdateStatus {
             settings::append_log("ERROR", &message);
             settings::update_status(DiagnosticStatus::Error, message)
         }
+    }
+}
+
+async fn check_for_updates_quietly_for_app(app: &tauri::AppHandle) -> UpdateStatus {
+    let updater = match build_updater_quietly(app) {
+        Ok(updater) => updater,
+        Err(status) => return status,
+    };
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            let version = update.version.clone();
+            let message = format!("发现新版本：{}，请确认后安装", version);
+            settings::update_status_with_version(DiagnosticStatus::Warning, message, Some(version))
+        }
+        Ok(None) => settings::update_status(DiagnosticStatus::Ok, "当前已是最新版本"),
+        Err(error) => settings::update_status(
+            DiagnosticStatus::Error,
+            format!("更新检查失败：{}", error_details(&error)),
+        ),
     }
 }
 
@@ -823,6 +895,37 @@ fn build_updater(app: &tauri::AppHandle) -> Result<tauri_plugin_updater::Updater
     }
 }
 
+fn build_updater_quietly(
+    app: &tauri::AppHandle,
+) -> Result<tauri_plugin_updater::Updater, UpdateStatus> {
+    let config = match settings::update_channel_config(Some(app.config())) {
+        Ok(config) => config,
+        Err(_) => {
+            return Err(settings::update_status(
+                DiagnosticStatus::Skipped,
+                settings::update_channel_unconfigured_message(),
+            ));
+        }
+    };
+    let endpoint = match Url::parse(&config.endpoint) {
+        Ok(endpoint) => endpoint,
+        Err(error) => {
+            let message = format!("更新端点格式无效：{}", error);
+            return Err(settings::update_status(DiagnosticStatus::Error, message));
+        }
+    };
+
+    app.updater_builder()
+        .endpoints(vec![endpoint])
+        .and_then(|builder| builder.pubkey(config.pubkey).build())
+        .map_err(|error| {
+            settings::update_status(
+                DiagnosticStatus::Error,
+                format!("更新检查初始化失败：{}", error_details(&error)),
+            )
+        })
+}
+
 fn error_details(error: &dyn std::error::Error) -> String {
     let mut message = error.to_string();
     let mut source = error.source();
@@ -871,6 +974,7 @@ pub fn run() {
             }
 
             schedule_startup_update_check(app.handle());
+            schedule_periodic_update_check(app.handle());
             schedule_startup_dashboard_refresh(app.handle());
             schedule_periodic_dashboard_refresh(app.handle());
 

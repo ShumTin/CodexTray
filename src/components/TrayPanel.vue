@@ -77,8 +77,16 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "修复 Hook 采集开启状态",
-    detail: "开启 Hook 采集后立即保持正确状态，并在写入成功后记录日志提示。",
+    title: "修复 Hook 采集校验",
+    detail: "解决 hooks.json 里残留旧格式顶层字段导致 Codex CLI 直接报错，并兼容 Codex 返回的 lower camel 事件名",
+  },
+  {
+    title: "解决日志频繁写入",
+    detail: "自动刷新改为静默路径，不再写入日志，手动刷新仍保留。",
+  },
+  {
+    title: "定时自动检查新版本",
+    detail: "启动静默检查一次，之后每 1 小时静默检查一次，不写入日志。",
   },
 ];
 
