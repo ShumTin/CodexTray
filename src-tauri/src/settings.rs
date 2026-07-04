@@ -255,7 +255,9 @@ pub async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
     write_hooks_config(&path, &config)?;
     if let Some(probe) = &probe {
         if enabled {
-            validate_and_trust_codextray_hooks(probe, &exe, &path).await?;
+            if let Err(error) = validate_and_trust_codextray_hooks(probe, &exe, &path).await {
+                append_log("WARN", &format!("Hook 采集校验失败：{}", error));
+            }
         } else if let Err(error) = remove_hook_trust_keys(probe, trust_keys).await {
             append_log("WARN", &format!("Hook 信任状态清理失败：{}", error));
         }

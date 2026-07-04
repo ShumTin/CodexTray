@@ -63,7 +63,8 @@ let unlistenDashboardRefresh: UnlistenFn | undefined;
 let hasDashboardRefreshStartedDomListener = false;
 let hasDashboardDomListener = false;
 let isRefreshingDashboard = false;
-let isLoadingSettings = false;
+let settingsSnapshotRequestId = 0;
+let recentLogsRequestId = 0;
 const heatmapModes: readonly { label: string; value: HeatmapMode }[] = [
   { label: "每日", value: "daily" },
   { label: "每周", value: "weekly" },
@@ -76,8 +77,8 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "添加额度重置次数展示",
-    detail: "解析 Codex CLI 返回的 rateLimitResetCredits，在额度卡片中展示重置次数和悬停信息卡片。",
+    title: "修复 Hook 采集开启状态",
+    detail: "开启 Hook 采集后立即保持正确状态，并在写入成功后记录日志提示。",
   },
 ];
 
@@ -241,22 +242,26 @@ async function refreshDashboard(): Promise<void> {
 }
 
 async function loadSettingsSnapshot(): Promise<void> {
-  if (isLoadingSettings) {
+  const requestId = ++settingsSnapshotRequestId;
+  const nextSnapshot = await invoke<SettingsSnapshot>("get_settings_snapshot");
+
+  if (requestId !== settingsSnapshotRequestId) {
     return;
   }
 
-  isLoadingSettings = true;
-
-  try {
-    settingsSnapshot.value = await invoke<SettingsSnapshot>("get_settings_snapshot");
-    shortcutDraft.value = settingsSnapshot.value.settings.globalShortcut;
-  } finally {
-    isLoadingSettings = false;
-  }
+  settingsSnapshot.value = nextSnapshot;
+  shortcutDraft.value = nextSnapshot.settings.globalShortcut;
 }
 
 async function loadRecentLogs(): Promise<void> {
-  logs.value = await invoke<LogEntry[]>("get_recent_logs");
+  const requestId = ++recentLogsRequestId;
+  const nextLogs = await invoke<LogEntry[]>("get_recent_logs");
+
+  if (requestId !== recentLogsRequestId) {
+    return;
+  }
+
+  logs.value = nextLogs;
 }
 
 function applyDashboardSnapshot(nextSnapshot: DashboardSnapshot): void {
@@ -451,6 +456,7 @@ async function toggleHook(): Promise<void> {
 
   const enabled = !(hookStatus.value?.enabled ?? false);
   hookToggleTarget.value = enabled ? "enable" : "disable";
+  settingsSnapshotRequestId += 1;
 
   try {
     const hook = await invoke<SettingsSnapshot["hook"]>("set_hook_enabled", { enabled });
@@ -459,7 +465,6 @@ async function toggleHook(): Promise<void> {
       settingsSnapshot.value = { ...settingsSnapshot.value, hook };
     }
 
-    await loadSettingsSnapshot();
     await loadRecentLogs();
   } finally {
     hookToggleTarget.value = null;
