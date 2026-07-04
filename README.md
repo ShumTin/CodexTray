@@ -4,6 +4,8 @@ CodexTray 是一款面向 Windows 的 Codex 桌面托盘面板，用于快速查
 
 ![CodexTray 预览](https://cdn.nodeimage.com/i/FsUYfNjkcOEKUow99Ysb5kGXj7lSeTfD.webp)
 
+![CodexTray 预览](https://cdn.nodeimage.com/i/Fu0Q4Tto2yjNZXTtpFSoFAXHnvVaLohF.webp)
+
 ---
 
 ## 功能特性
