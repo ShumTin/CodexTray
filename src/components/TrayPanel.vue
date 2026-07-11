@@ -58,6 +58,7 @@ const isInstallingUpdate = ref(false);
 const isDashboardRefreshing = ref(false);
 const isChoosingCliPath = ref(false);
 const hookToggleTarget = ref<"enable" | "disable" | null>(null);
+const hookErrorMessage = ref<string | null>(null);
 let unlistenDashboardRefreshStarted: UnlistenFn | undefined;
 let unlistenDashboardRefresh: UnlistenFn | undefined;
 let hasDashboardRefreshStartedDomListener = false;
@@ -148,6 +149,10 @@ const hookMessage = computed(() => {
 
   if (hookToggleTarget.value === "disable") {
     return "正在移除 Hook 采集";
+  }
+
+  if (hookErrorMessage.value) {
+    return hookErrorMessage.value;
   }
 
   return hookStatus.value?.message ?? "读取中";
@@ -464,6 +469,7 @@ async function toggleHook(): Promise<void> {
 
   const enabled = !(hookStatus.value?.enabled ?? false);
   hookToggleTarget.value = enabled ? "enable" : "disable";
+  hookErrorMessage.value = null;
   settingsSnapshotRequestId += 1;
 
   try {
@@ -473,6 +479,10 @@ async function toggleHook(): Promise<void> {
       settingsSnapshot.value = { ...settingsSnapshot.value, hook };
     }
 
+    await loadRecentLogs();
+  } catch (error) {
+    hookErrorMessage.value = errorMessage(error);
+    await loadSettingsSnapshot();
     await loadRecentLogs();
   } finally {
     hookToggleTarget.value = null;
@@ -674,12 +684,16 @@ function heatmapDetailPayload(day: HeatmapDay): HeatmapDetailPayload {
     intensityLevel: heatmapIntensityLevel(day),
     stats: [
       { label: "用量强度", value: heatmapIntensityLabel(day), tone: "blue" },
-      { label: "会话总数", value: formatCount(hookStats.sessionCount), tone: "green" },
-      { label: "对话轮次", value: formatCount(hookStats.turnCount), tone: "teal" },
-      { label: "子智能体", value: formatCount(hookStats.subagentCount), tone: "violet" },
-      { label: "工具调用", value: formatCount(hookStats.toolCallCount), tone: "amber" },
-      { label: "权限请求", value: formatCount(hookStats.permissionRequestCount), tone: "rose" },
-      { label: "上下文压缩", value: formatCount(hookStats.compactCount), tone: "fuchsia" },
+      { label: "会话总数", value: formatHookCount(hookStats?.sessionCount), tone: "green" },
+      { label: "对话轮次", value: formatHookCount(hookStats?.turnCount), tone: "teal" },
+      { label: "子智能体", value: formatHookCount(hookStats?.subagentCount), tone: "violet" },
+      { label: "工具调用", value: formatHookCount(hookStats?.toolCallCount), tone: "amber" },
+      {
+        label: "权限请求",
+        value: formatHookCount(hookStats?.permissionRequestCount),
+        tone: "rose",
+      },
+      { label: "上下文压缩", value: formatHookCount(hookStats?.compactCount), tone: "fuchsia" },
     ],
   };
 }
@@ -692,23 +706,25 @@ function heatmapDetailTitle(day: HeatmapDay): string {
   return day.date;
 }
 
-function hookStatsValue(day: HeatmapDay): HookDayStats {
+function hookStatsValue(day: HeatmapDay): HookDayStats | null {
   if (!isColumnHeatmapMode()) {
-    return day.hookStats ?? emptyHookStats();
+    return day.hookStats;
   }
 
   const weekStart = formatDateKey(weekStartDate(day.date));
-
-  return visibleHeatmapDays.value
+  const weekStats = visibleHeatmapDays.value
     .filter((value) => formatDateKey(weekStartDate(value.date)) === weekStart)
-    .reduce((total, value) => addHookStats(total, value.hookStats), emptyHookStats());
-}
+    .map((value) => value.hookStats)
+    .filter((value): value is HookDayStats => value !== null);
 
-function addHookStats(total: HookDayStats, value: HookDayStats | null): HookDayStats {
-  if (!value) {
-    return total;
+  if (weekStats.length === 0) {
+    return null;
   }
 
+  return weekStats.reduce(addHookStats, emptyHookStats());
+}
+
+function addHookStats(total: HookDayStats, value: HookDayStats): HookDayStats {
   return {
     sessionCount: total.sessionCount + value.sessionCount,
     promptCount: total.promptCount + value.promptCount,
@@ -789,6 +805,14 @@ function trimTrailingZero(value: string): string {
 
 function formatCount(value: number): string {
   return value.toLocaleString();
+}
+
+function formatHookCount(value: number | undefined): string {
+  return value === undefined ? "—" : formatCount(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function formatDateTime(value: string | undefined): string {

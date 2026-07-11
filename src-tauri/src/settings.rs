@@ -206,21 +206,46 @@ pub async fn get_hook_status() -> HookStatus {
         };
     };
 
-    match read_hooks_config(&path) {
-        Ok(config) if hooks_config_has_codextray(&config, &exe) => HookStatus {
-            enabled: true,
-            source: path.display().to_string(),
-            message: "Hook 采集已写入".to_string(),
-        },
-        Ok(_) => HookStatus {
+    let config = match read_hooks_config(&path) {
+        Ok(config) => config,
+        Err(error) => {
+            return HookStatus {
+                enabled: false,
+                source: path.display().to_string(),
+                message: error,
+            };
+        }
+    };
+
+    if !hooks_config_has_codextray(&config, &exe) {
+        return HookStatus {
             enabled: false,
             source: path.display().to_string(),
             message: "未启用 Hook 采集".to_string(),
+        };
+    }
+
+    let probe = match codex_cli_probe().await {
+        Ok(probe) => probe,
+        Err(error) => {
+            return HookStatus {
+                enabled: false,
+                source: path.display().to_string(),
+                message: format!("Hook 已写入，但无法验证：{}", error),
+            };
+        }
+    };
+
+    match validate_configured_codextray_hooks(&probe, &exe, &path).await {
+        Ok(()) => HookStatus {
+            enabled: true,
+            source: path.display().to_string(),
+            message: "Hook 已配置并受信任，等待 Codex 事件".to_string(),
         },
         Err(error) => HookStatus {
             enabled: false,
             source: path.display().to_string(),
-            message: error,
+            message: format!("Hook 未生效：{}", error),
         },
     }
 }
@@ -257,7 +282,9 @@ pub async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
     if let Some(probe) = &probe {
         if enabled {
             if let Err(error) = validate_and_trust_codextray_hooks(probe, &exe, &path).await {
-                append_log("WARN", &format!("Hook 采集校验失败：{}", error));
+                let message = format!("Hook 采集校验失败：{}", error);
+                append_log("ERROR", &message);
+                return Err(message);
             }
         } else if let Err(error) = remove_hook_trust_keys(probe, trust_keys).await {
             append_log("WARN", &format!("Hook 信任状态清理失败：{}", error));
@@ -596,6 +623,23 @@ async fn validate_and_trust_codextray_hooks(
     }
 
     Ok(())
+}
+
+async fn validate_configured_codextray_hooks(
+    probe: &CliProbe,
+    exe: &Path,
+    hooks_path: &Path,
+) -> Result<(), String> {
+    let cwd = codex_home()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf()));
+    let response = list_codex_hooks(probe, vec![cwd.display().to_string()]).await?;
+
+    match hook_validation_message(&response, exe, hooks_path) {
+        Some(message) => Err(message),
+        None => Ok(()),
+    }
 }
 
 async fn managed_hook_trust_keys(
@@ -1358,6 +1402,41 @@ mod tests {
         });
 
         assert_eq!(hook_validation_message(&response, exe, hooks_path), None);
+    }
+
+    #[test]
+    fn rejects_modified_codextray_hook_so_written_config_is_not_reported_as_active() {
+        let exe = Path::new(r"D:\Tools\CodexTray\CodexTray.exe");
+        let hooks_path = Path::new(r"C:\Users\person\.codex\hooks.json");
+        let hooks = CODEX_HOOK_EVENTS
+            .iter()
+            .map(|event| {
+                json!({
+                    "eventName": lower_first(event),
+                    "command": "\"D:\\Tools\\CodexTray\\CodexTray.exe\" --hook-event",
+                    "sourcePath": "C:\\Users\\person\\.codex\\hooks.json",
+                    "enabled": true,
+                    "trustStatus": if *event == "PostToolUse" { "modified" } else { "trusted" }
+                })
+            })
+            .collect::<Vec<_>>();
+        let response = json!({
+            "result": {
+                "data": [
+                    {
+                        "cwd": "C:\\Users\\person",
+                        "hooks": hooks,
+                        "warnings": [],
+                        "errors": []
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(
+            hook_validation_message(&response, exe, hooks_path),
+            Some("CodexTray Hook 未被信任".to_string())
+        );
     }
 
     #[test]

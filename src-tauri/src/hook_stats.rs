@@ -149,12 +149,16 @@ fn accumulate_event(value: &Value, accumulator: &mut HookDayAccumulator) {
         }
     }
 
-    let event = string_field(value, &["event", "hook_event", "hookEvent"]).unwrap_or_default();
+    let event = string_field(
+        value,
+        &["hook_event_name", "event", "hook_event", "hookEvent"],
+    )
+    .unwrap_or_default();
 
     match event {
         "UserPromptSubmit" => accumulator.stats.prompt_count += 1,
         "PermissionRequest" => accumulator.stats.permission_request_count += 1,
-        "PreCompact" | "PostCompact" => accumulator.stats.compact_count += 1,
+        "PostCompact" => accumulator.stats.compact_count += 1,
         "SubagentStart" => accumulator.stats.subagent_count += 1,
         "PreToolUse" | "PostToolUse" => {
             let key = tool_call_key(value);
@@ -167,10 +171,14 @@ fn accumulate_event(value: &Value, accumulator: &mut HookDayAccumulator) {
 }
 
 fn tool_call_key(value: &Value) -> String {
+    if let Some(tool_use_id) = string_field(value, &["tool_use_id", "toolUseId"]) {
+        return tool_use_id.to_string();
+    }
+
     [
         string_field(value, &["session", "session_id", "sessionId"]).unwrap_or(""),
         string_field(value, &["turn", "turn_id", "turnId"]).unwrap_or(""),
-        string_field(value, &["tool", "tool_name", "toolName"]).unwrap_or(""),
+        string_field(value, &["tool_name", "tool", "toolName"]).unwrap_or(""),
     ]
     .join("|")
 }
@@ -238,13 +246,19 @@ mod tests {
         fs::write(
             &path,
             concat!(
-                r#"{"timestamp":"2026-07-02 09:00:00.000","event":"UserPromptSubmit","session":"s1","turn":"t1"}"#,
+                r#"{"receivedAt":"2026-07-02T09:00:00+08:00","hook_event_name":"UserPromptSubmit","session_id":"s1","turn_id":"t1"}"#,
                 "\n",
-                r#"{"timestamp":"2026-07-02 09:01:00.000","event":"PostToolUse","session":"s1","turn":"t1","tool":"shell"}"#,
+                r#"{"receivedAt":"2026-07-02T09:01:00+08:00","hook_event_name":"PreToolUse","session_id":"s1","turn_id":"t1","tool_name":"Bash","tool_use_id":"call-1"}"#,
                 "\n",
-                r#"{"timestamp":"2026-07-02 09:02:00.000","event":"PermissionRequest","session":"s1","turn":"t2"}"#,
+                r#"{"receivedAt":"2026-07-02T09:01:01+08:00","hook_event_name":"PostToolUse","session_id":"s1","turn_id":"t1","tool_name":"Bash","tool_use_id":"call-1"}"#,
                 "\n",
-                r#"{"timestamp":"2026-07-02 09:03:00.000","event":"SubagentStart","session":"s2","turn":"t3"}"#,
+                r#"{"receivedAt":"2026-07-02T09:02:00+08:00","hook_event_name":"PermissionRequest","session_id":"s1","turn_id":"t2"}"#,
+                "\n",
+                r#"{"receivedAt":"2026-07-02T09:03:00+08:00","hook_event_name":"SubagentStart","session_id":"s2","turn_id":"t3"}"#,
+                "\n",
+                r#"{"receivedAt":"2026-07-02T09:04:00+08:00","hook_event_name":"PreCompact","session_id":"s2","turn_id":"t3"}"#,
+                "\n",
+                r#"{"receivedAt":"2026-07-02T09:04:01+08:00","hook_event_name":"PostCompact","session_id":"s2","turn_id":"t3"}"#,
                 "\n",
             ),
         )
@@ -263,6 +277,7 @@ mod tests {
         assert_eq!(stats.tool_call_count, 1);
         assert_eq!(stats.permission_request_count, 1);
         assert_eq!(stats.subagent_count, 1);
+        assert_eq!(stats.compact_count, 1);
 
         fs::remove_dir_all(root).expect("test dir should be removed");
     }
