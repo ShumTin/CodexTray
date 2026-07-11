@@ -78,12 +78,12 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "修复 Hook 事件统计",
-    detail: "兼容最新 Hook 事件字段，详细卡片可正确显示会话、工具调用、权限请求和上下文压缩数据。",
+    title: "Hook 数据存储优化",
+    detail: "Hook 事件现在只保存统计所需字段，不再保留命令输入、工具响应和路径等大内容。",
   },
   {
-    title: "修复低额度启动闪退",
-    detail: "修复低额度时托盘图标绘制异常，避免应用在启动后短时间内意外退出。",
+    title: "自动保留近期 Hook 活动",
+    detail: "Hook 数据会按面板展示窗口自动聚合，并仅保留最近 224 天，减少长期磁盘占用。",
   },
 ];
 

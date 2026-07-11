@@ -28,6 +28,7 @@ CodexTray 是一款面向 Windows 的 Codex 桌面托盘面板，用于快速查
 - 一键开启或关闭 Codex Hook 采集
 - 记录会话数、对话轮次、工具调用、权限请求、上下文压缩和子智能体使用情况
 - Hook 状态会在设置页中展示，便于确认采集是否正常
+- Hook 事件仅保存统计所需字段，并按最近 224 天展示窗口自动聚合与清理
 
 ### 桌面体验
 
@@ -85,10 +86,10 @@ CodexTray 是一款面向 Windows 的 Codex 桌面托盘面板，用于快速查
 | --- | --- |
 | 应用设置 | `%LocalAppData%\CodexTray\settings.json` |
 | 应用日志 | `%LocalAppData%\CodexTray\logs\codextray.log` |
-| Hook 事件 | `%LocalAppData%\CodexTray\hook-events\` |
+| Hook 数据 | `%LocalAppData%\CodexTray\HookEvents\` |
 | Codex Hook 配置 | `%CODEX_HOME%\hooks.json` 或用户 Codex 配置目录 |
 
-CodexTray 只写入自身管理的设置、日志和 Hook 事件数据。关闭 Hook 采集时，会移除由 CodexTray 管理的 Hook 条目，不会清空用户的 Codex 配置。
+CodexTray 只写入自身管理的设置、日志和 Hook 数据。Hook 原始事件会按日聚合，并仅保留最近 224 天的数据。关闭 Hook 采集时，会移除由 CodexTray 管理的 Hook 条目，不会清空用户的 Codex 配置。
 
 ---
 

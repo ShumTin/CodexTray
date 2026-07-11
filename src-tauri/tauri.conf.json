@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "CodexTray",
   "mainBinaryName": "CodexTray",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "identifier": "app.codextray.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -34,6 +34,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": ["resources/codextray-hook.ps1"],
     "createUpdaterArtifacts": true,
     "windows": {
       "nsis": {

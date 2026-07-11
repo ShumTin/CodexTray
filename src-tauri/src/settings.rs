@@ -25,6 +25,7 @@ const RUN_VALUE: &str = "CodexTray";
 const UPDATE_ENDPOINT_ENV: &str = "CODEXTRAY_UPDATE_ENDPOINT";
 const UPDATE_PUBKEY_ENV: &str = "CODEXTRAY_UPDATE_PUBKEY";
 const CODEXTRAY_HOOK_ARG: &str = "--hook-event";
+const CODEXTRAY_HOOK_SCRIPT: &str = "codextray-hook.ps1";
 const CODEX_HOOK_TIMEOUT_SECONDS: u64 = 5;
 const CODEX_HOOK_TRUST_STATE_KEY: &str = "hooks.state";
 const CODEX_HOOK_EVENTS: [&str; 10] = [
@@ -253,6 +254,10 @@ pub async fn get_hook_status() -> HookStatus {
 pub async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
     let path = codex_hooks_path();
     let exe = current_exe_path()?;
+    let hook_script = hook_script_path(&exe);
+    if enabled && !hook_script.is_file() {
+        return Err(format!("Hook 接收器不存在：{}", hook_script.display()));
+    }
     let probe = if enabled {
         let probe = codex_cli_probe().await?;
         ensure_codex_hooks_globally_enabled(&probe).await?;
@@ -273,9 +278,10 @@ pub async fn set_hook_enabled(enabled: bool) -> Result<HookStatus, String> {
     normalize_hooks_config(&mut config);
 
     if enabled {
+        remove_all_codextray_hooks(&mut config);
         install_codextray_hooks(&mut config, &exe);
     } else {
-        remove_codextray_hooks(&mut config, &exe);
+        remove_all_codextray_hooks(&mut config);
     }
 
     write_hooks_config(&path, &config)?;
@@ -979,27 +985,27 @@ fn normalize_hooks_config(config: &mut Value) {
     }
 }
 
-fn remove_codextray_hooks(config: &mut Value, exe: &Path) {
+fn remove_all_codextray_hooks(config: &mut Value) {
     let Some(root) = config.as_object_mut() else {
         return;
     };
 
     for event in CODEX_HOOK_EVENTS {
         if let Some(Value::Array(hooks)) = root.get_mut(event) {
-            hooks.retain(|hook| !is_codextray_hook_entry(hook, exe));
+            hooks.retain(|hook| !is_any_codextray_hook_entry(hook));
         }
     }
 
     if let Some(Value::Object(nested_root)) = root.get_mut("hooks") {
         for event in CODEX_HOOK_EVENTS {
             if let Some(Value::Array(groups)) = nested_root.get_mut(event) {
-                remove_codextray_hooks_from_groups(groups, exe);
+                remove_codextray_hooks_from_groups(groups);
             }
         }
     }
 }
 
-fn remove_codextray_hooks_from_groups(groups: &mut Vec<Value>, exe: &Path) {
+fn remove_codextray_hooks_from_groups(groups: &mut Vec<Value>) {
     for group in groups.iter_mut() {
         let Some(group) = group.as_object_mut() else {
             continue;
@@ -1008,7 +1014,7 @@ fn remove_codextray_hooks_from_groups(groups: &mut Vec<Value>, exe: &Path) {
             continue;
         };
 
-        hooks.retain(|hook| !is_codextray_hook_entry(hook, exe));
+        hooks.retain(|hook| !is_any_codextray_hook_entry(hook));
     }
 
     groups.retain(|group| {
@@ -1080,22 +1086,35 @@ fn is_codextray_hook_entry(value: &Value, exe: &Path) -> bool {
         .and_then(Value::as_str)
         .map(|command| command_mentions_current_exe(command, exe))
         .unwrap_or(false);
-    let has_hook_arg = object
-        .get("args")
-        .and_then(Value::as_array)
-        .map(|args| {
-            args.iter()
-                .any(|arg| arg.as_str() == Some(CODEXTRAY_HOOK_ARG))
-        })
-        .unwrap_or_else(|| {
-            object
-                .get("command")
-                .and_then(Value::as_str)
-                .map(|command| command.contains(CODEXTRAY_HOOK_ARG))
-                .unwrap_or(false)
-        });
+    command_matches
+        && object
+            .get("command")
+            .and_then(Value::as_str)
+            .map(command_mentions_hook_wrapper)
+            .unwrap_or(false)
+}
 
-    command_matches && has_hook_arg
+fn is_any_codextray_hook_entry(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+
+    object
+        .get("command")
+        .and_then(Value::as_str)
+        .map(|command| {
+            command_mentions_hook_wrapper(command)
+                || (command_mentions_codextray_exe(command) && command.contains(CODEXTRAY_HOOK_ARG))
+        })
+        .unwrap_or(false)
+}
+
+fn command_mentions_codextray_exe(command: &str) -> bool {
+    normalized_path_text(command).contains("codextray.exe")
+}
+
+fn command_mentions_hook_wrapper(command: &str) -> bool {
+    normalized_path_text(command).contains(CODEXTRAY_HOOK_SCRIPT)
 }
 
 fn codextray_hook_entry(exe: &Path) -> Value {
@@ -1113,7 +1132,11 @@ fn codextray_hook_entry(exe: &Path) -> Value {
 }
 
 fn codextray_hook_command(exe: &Path) -> String {
-    format!("{} {}", shell_quoted_path(exe), CODEXTRAY_HOOK_ARG)
+    format!(
+        "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {} -Executable {}",
+        shell_quoted_path(&hook_script_path(exe)),
+        shell_quoted_path(exe)
+    )
 }
 
 fn shell_quoted_path(path: &Path) -> String {
@@ -1127,9 +1150,11 @@ fn shell_quoted_path(path: &Path) -> String {
 
 fn command_matches_current_exe(command: &str, exe: &Path) -> bool {
     command_mentions_current_exe(command, exe)
-        && command.split_whitespace().any(|part| {
-            part.trim_matches(['"', '\'']) == CODEXTRAY_HOOK_ARG || part == CODEXTRAY_HOOK_ARG
-        })
+        && (command_mentions_hook_wrapper(command)
+            || command.split_whitespace().any(|part| {
+                part.trim_matches(['"', '\'']) == CODEXTRAY_HOOK_ARG
+                    || part == CODEXTRAY_HOOK_ARG
+            }))
 }
 
 fn command_mentions_current_exe(command: &str, exe: &Path) -> bool {
@@ -1173,6 +1198,25 @@ fn write_hooks_config(path: &Path, config: &Value) -> Result<(), String> {
 
 fn current_exe_path() -> Result<PathBuf, String> {
     env::current_exe().map_err(|error| format!("无法解析当前程序路径：{}", error))
+}
+
+fn hook_script_path(exe: &Path) -> PathBuf {
+    let executable_dir = exe.parent().unwrap_or_else(|| Path::new("."));
+    let candidates = [
+        executable_dir.join(CODEXTRAY_HOOK_SCRIPT),
+        executable_dir.join("resources").join(CODEXTRAY_HOOK_SCRIPT),
+        executable_dir
+            .join("..")
+            .join("..")
+            .join("resources")
+            .join(CODEXTRAY_HOOK_SCRIPT),
+    ];
+
+    candidates
+        .iter()
+        .find(|path| path.is_file())
+        .cloned()
+        .unwrap_or_else(|| candidates[0].clone())
 }
 
 fn parse_reg_query_value(output: &str) -> Option<String> {
@@ -1247,7 +1291,7 @@ mod tests {
     use super::{
         codex_hooks_globally_disabled, hook_validation_message, hooks_config_has_codextray,
         install_codextray_hooks, is_supported_shortcut, normalize_hooks_config, parse_log_line,
-        parse_reg_query_value, remove_codextray_hooks, update_channel_config,
+        parse_reg_query_value, remove_all_codextray_hooks, update_channel_config,
         updater_config_endpoint_from_value, updater_config_pubkey_from_value, CODEX_HOOK_EVENTS,
         UPDATE_ENDPOINT_ENV, UPDATE_PUBKEY_ENV,
     };
@@ -1381,7 +1425,7 @@ mod tests {
             .map(|event| {
                 json!({
                     "eventName": lower_first(event),
-                    "command": "\"D:\\Tools\\CodexTray\\CodexTray.exe\" --hook-event",
+                    "command": "powershell.exe -File \"D:\\Tools\\CodexTray\\codextray-hook.ps1\" -Executable \"D:\\Tools\\CodexTray\\CodexTray.exe\"",
                     "sourcePath": "C:\\Users\\person\\.codex\\hooks.json",
                     "enabled": true,
                     "trustStatus": "trusted"
@@ -1413,7 +1457,7 @@ mod tests {
             .map(|event| {
                 json!({
                     "eventName": lower_first(event),
-                    "command": "\"D:\\Tools\\CodexTray\\CodexTray.exe\" --hook-event",
+                    "command": "powershell.exe -File \"D:\\Tools\\CodexTray\\codextray-hook.ps1\" -Executable \"D:\\Tools\\CodexTray\\CodexTray.exe\"",
                     "sourcePath": "C:\\Users\\person\\.codex\\hooks.json",
                     "enabled": true,
                     "trustStatus": if *event == "PostToolUse" { "modified" } else { "trusted" }
@@ -1462,7 +1506,7 @@ mod tests {
             }
         });
 
-        remove_codextray_hooks(&mut config, exe);
+        remove_all_codextray_hooks(&mut config);
 
         let hooks = config
             .get("hooks")
@@ -1479,6 +1523,53 @@ mod tests {
             Some("python other.py")
         );
         assert!(!hooks_config_has_codextray(&config, exe));
+    }
+
+    #[test]
+    fn removes_stale_codextray_hook_paths_before_installing_current_executable() {
+        let current_exe = Path::new(r"D:\Tools\CodexTray\CodexTray.exe");
+        let mut config = json!({
+            "hooks": {
+                "UserPromptSubmit": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "\"D:\\Old\\CodexTray\\CodexTray.exe\" --hook-event"
+                            },
+                            {
+                                "type": "command",
+                                "command": "python other.py"
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        remove_all_codextray_hooks(&mut config);
+        install_codextray_hooks(&mut config, current_exe);
+
+        let hooks = config
+            .get("hooks")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|root| root.get("UserPromptSubmit"))
+            .and_then(serde_json::Value::as_array)
+            .expect("event should have groups");
+        let commands = hooks
+            .iter()
+            .filter_map(|group| group.get("hooks").and_then(serde_json::Value::as_array))
+            .flat_map(|hooks| hooks.iter())
+            .filter_map(|hook| hook.get("command").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            commands,
+            vec![
+                "python other.py",
+                "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"D:\\Tools\\CodexTray\\codextray-hook.ps1\" -Executable \"D:\\Tools\\CodexTray\\CodexTray.exe\""
+            ]
+        );
     }
 
     #[test]
