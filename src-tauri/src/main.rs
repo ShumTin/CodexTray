@@ -11,5 +11,6 @@ fn main() {
         return;
     }
 
+    codextray_lib::initialize_startup_diagnostics();
     codextray_lib::run()
 }

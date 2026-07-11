@@ -156,6 +156,9 @@ fn draw_rounded_rect(
     radius: f32,
     color: RgbaColor,
 ) {
+    let width = right - left + 1;
+    let height = bottom - top + 1;
+    let radius = radius.min(width.min(height) as f32 / 2.0);
     let left_radius = left as f32 + radius;
     let right_radius = right as f32 + 1.0 - radius;
     let top_radius = top as f32 + radius;
@@ -238,6 +241,13 @@ mod tests {
                 remaining_percent: 24
             })
         );
+    }
+
+    #[test]
+    fn icon_renders_low_quota_without_panicking_when_fill_is_one_pixel_wide() {
+        let result = std::panic::catch_unwind(|| build_icon(Some(1)));
+
+        assert!(result.is_ok());
     }
 
     fn snapshot_with_quota(windows: Vec<QuotaWindow>, stale: bool) -> DashboardSnapshot {

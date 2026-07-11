@@ -3,6 +3,7 @@ mod dashboard;
 mod hook_stats;
 mod models;
 mod settings;
+mod startup_diagnostics;
 mod token_usage;
 mod tray_status;
 
@@ -11,6 +12,7 @@ use models::{
     AppSettings, DashboardSnapshot, DiagnosticStatus, HookStatus, LogEntry, SettingsSnapshot,
     StartupStatus, UpdateStatus,
 };
+use startup_diagnostics::StartupDiagnosticVariant;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -55,6 +57,10 @@ enum DashboardRefreshLog {
 
 pub fn run_hook_event_process() -> Result<(), String> {
     hook_stats::run_hook_event_process()
+}
+
+pub fn initialize_startup_diagnostics() {
+    startup_diagnostics::initialize();
 }
 
 fn toggle_panel(app: &tauri::AppHandle) {
@@ -112,12 +118,110 @@ fn refresh_dashboard_from_tray(app: &tauri::AppHandle) {
 }
 
 fn schedule_startup_dashboard_refresh(app: &tauri::AppHandle) {
+    if startup_diagnostics::variant().skips_startup_refresh() {
+        startup_diagnostics::record("startup.refresh.skipped", "diagnosticVariant");
+        return;
+    }
+
     let app = app.clone();
 
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(STARTUP_REFRESH_DELAY_SECONDS)).await;
-        refresh_dashboard_silently_for_app(&app);
+        run_startup_dashboard_refresh(app).await;
     });
+}
+
+async fn run_startup_dashboard_refresh(app: tauri::AppHandle) {
+    startup_diagnostics::record("startup.refresh.begin", "");
+    if !begin_startup_dashboard_refresh(&app) {
+        startup_diagnostics::record("startup.refresh.ignored", "refreshAlreadyRunning");
+        return;
+    }
+
+    let state = app.state::<DashboardState>();
+    let snapshot = dashboard::refresh_dashboard(&state).await;
+    startup_diagnostics::record(
+        "startup.quota.completed",
+        &format!(
+            "cliProbe={:?} cliAppServer={:?} quotaWindows={}",
+            snapshot.diagnostics.cli_probe.status,
+            snapshot.diagnostics.cli_app_server.status,
+            snapshot
+                .quota
+                .as_ref()
+                .map(|quota| quota.windows.len())
+                .unwrap_or_default()
+        ),
+    );
+    finish_dashboard_refresh();
+
+    if startup_diagnostics::variant().skips_startup_ui_update() {
+        startup_diagnostics::record("startup.ui.skipped", "diagnosticVariant");
+    } else {
+        update_startup_dashboard_ui(&app, &snapshot);
+    }
+
+    refresh_startup_token_activity(app).await;
+    startup_diagnostics::record("startup.refresh.completed", "");
+}
+
+fn begin_startup_dashboard_refresh(app: &tauri::AppHandle) -> bool {
+    if startup_diagnostics::variant() != StartupDiagnosticVariant::NoStartupUiUpdate {
+        return begin_dashboard_refresh(app);
+    }
+
+    if DASHBOARD_REFRESH_IN_PROGRESS.swap(true, Ordering::Relaxed) {
+        return false;
+    }
+    record_dashboard_refresh_started();
+    true
+}
+
+fn update_startup_dashboard_ui(app: &tauri::AppHandle, snapshot: &DashboardSnapshot) {
+    startup_diagnostics::record("startup.webview.update.begin", "");
+    update_dashboard_window(app, snapshot);
+    startup_diagnostics::record("startup.webview.update.completed", "");
+
+    startup_diagnostics::record("startup.tray.update.begin", "");
+    update_tray_status(app, snapshot);
+    startup_diagnostics::record("startup.tray.update.completed", "");
+
+    startup_diagnostics::record("startup.emit.begin", "");
+    let emit_result = app.emit(EVENT_DASHBOARD_REFRESHED, snapshot.clone());
+    startup_diagnostics::record(
+        "startup.emit.completed",
+        if emit_result.is_ok() { "ok" } else { "error" },
+    );
+}
+
+async fn refresh_startup_token_activity(app: tauri::AppHandle) {
+    startup_diagnostics::record("startup.usage.begin", "");
+    let state = app.state::<DashboardState>();
+    let snapshot = dashboard::refresh_token_activity(&state).await;
+    startup_diagnostics::record(
+        "startup.usage.data.completed",
+        &format!("source={:?}", snapshot.token_activity_source),
+    );
+
+    if startup_diagnostics::variant().skips_startup_ui_update() {
+        startup_diagnostics::record("startup.usage.ui.skipped", "diagnosticVariant");
+        return;
+    }
+
+    startup_diagnostics::record("startup.usage.webview.begin", "");
+    update_dashboard_window(&app, &snapshot);
+    startup_diagnostics::record("startup.usage.webview.completed", "");
+
+    startup_diagnostics::record("startup.usage.tray.begin", "");
+    update_tray_status(&app, &snapshot);
+    startup_diagnostics::record("startup.usage.tray.completed", "");
+
+    startup_diagnostics::record("startup.usage.emit.begin", "");
+    let emit_result = app.emit(EVENT_DASHBOARD_REFRESHED, snapshot);
+    startup_diagnostics::record(
+        "startup.usage.emit.completed",
+        if emit_result.is_ok() { "ok" } else { "error" },
+    );
 }
 
 fn refresh_dashboard_if_empty(app: &tauri::AppHandle) {
@@ -492,7 +596,12 @@ fn schedule_startup_update_check(app: &tauri::AppHandle) {
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        startup_diagnostics::record("startup.update.begin", "");
         let status = check_for_updates_quietly_for_app(&app).await;
+        startup_diagnostics::record(
+            "startup.update.completed",
+            &format!("status={:?}", status.status),
+        );
         prompt_startup_update_if_available(app, &status).await;
     });
 }
@@ -958,8 +1067,10 @@ pub fn run() {
             toggle_panel(app);
         }))
         .setup(|app| {
+            startup_diagnostics::record("setup.begin", "");
             app.handle().plugin(tauri_plugin_positioner::init())?;
             create_detail_window(app)?;
+            startup_diagnostics::record("setup.webviews.ready", "");
 
             if let Some(window) = app.get_webview_window("main") {
                 hide_panel_on_focus_loss(&window);
@@ -1017,6 +1128,10 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            startup_diagnostics::record("setup.tray.ready", "");
+            startup_diagnostics::schedule_smoke_test_exit(app.handle());
+            startup_diagnostics::record("setup.completed", "");
 
             Ok(())
         })
