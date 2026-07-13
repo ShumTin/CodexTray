@@ -78,12 +78,8 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "Hook 数据存储优化",
-    detail: "Hook 事件现在只保存统计所需字段，不再保留命令输入、工具响应和路径等大内容。",
-  },
-  {
-    title: "自动保留近期 Hook 活动",
-    detail: "Hook 数据会按面板展示窗口自动聚合，并仅保留最近 224 天，减少长期磁盘占用。",
+    title: "修复额度窗口标签",
+    detail: "额度面板现在会按 Codex CLI 返回的实际窗口时长显示标签，修复仅有 7D 额度时误显示为 5H 的问题。",
   },
 ];
 

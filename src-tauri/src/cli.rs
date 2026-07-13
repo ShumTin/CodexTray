@@ -606,12 +606,38 @@ fn append_rate_limit_snapshot(windows: &mut Vec<QuotaWindow>, limit_id: &str, sn
         .unwrap_or(limit_id);
 
     if let Some(primary) = snapshot.get("primary") {
-        append_rate_limit_window(windows, format!("{} 5H", limit_name), primary);
+        let duration_label =
+            rate_limit_window_duration_label(primary).unwrap_or_else(|| "5H".to_string());
+        append_rate_limit_window(
+            windows,
+            format!("{} {}", limit_name, duration_label),
+            primary,
+        );
     }
 
     if let Some(secondary) = snapshot.get("secondary") {
-        append_rate_limit_window(windows, format!("{} 7D", limit_name), secondary);
+        let duration_label =
+            rate_limit_window_duration_label(secondary).unwrap_or_else(|| "7D".to_string());
+        append_rate_limit_window(
+            windows,
+            format!("{} {}", limit_name, duration_label),
+            secondary,
+        );
     }
+}
+
+fn rate_limit_window_duration_label(window: &Value) -> Option<String> {
+    let duration_mins = window.get("windowDurationMins")?.as_u64()?;
+
+    if duration_mins % (24 * 60) == 0 {
+        return Some(format!("{}D", duration_mins / (24 * 60)));
+    }
+
+    if duration_mins % 60 == 0 {
+        return Some(format!("{}H", duration_mins / 60));
+    }
+
+    Some(format!("{}M", duration_mins))
 }
 
 fn append_rate_limit_window(windows: &mut Vec<QuotaWindow>, label: String, window: &Value) {
@@ -808,6 +834,27 @@ mod tests {
             .expect("reset credits should parse");
         assert_eq!(reset_credits.available_count, 1);
         assert!(reset_credits.expires_at.is_some());
+    }
+
+    #[test]
+    fn uses_reported_duration_when_seven_day_quota_is_the_primary_window() {
+        let value = json!({
+            "rateLimits": {
+                "limitName": "Codex",
+                "primary": {
+                    "usedPercent": 1.0,
+                    "windowDurationMins": 10_080,
+                    "resetsAt": 1_784_500_000
+                },
+                "secondary": null
+            }
+        });
+
+        let windows = extract_cli_windows(&value);
+
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].label, "Codex 7D");
+        assert_eq!(windows[0].remaining_percent, 99);
     }
 
     #[test]

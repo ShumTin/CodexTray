@@ -1285,6 +1285,7 @@ fn app_data_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use serde_json::json;
 
@@ -1527,7 +1528,14 @@ mod tests {
 
     #[test]
     fn removes_stale_codextray_hook_paths_before_installing_current_executable() {
-        let current_exe = Path::new(r"D:\Tools\CodexTray\CodexTray.exe");
+        let test_root = std::env::temp_dir().join(format!(
+            "codextray-hook-path-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be valid")
+                .as_nanos()
+        ));
+        let current_exe = test_root.join("CodexTray.exe");
         let mut config = json!({
             "hooks": {
                 "UserPromptSubmit": [
@@ -1548,7 +1556,7 @@ mod tests {
         });
 
         remove_all_codextray_hooks(&mut config);
-        install_codextray_hooks(&mut config, current_exe);
+        install_codextray_hooks(&mut config, &current_exe);
 
         let hooks = config
             .get("hooks")
@@ -1562,13 +1570,15 @@ mod tests {
             .flat_map(|hooks| hooks.iter())
             .filter_map(|hook| hook.get("command").and_then(serde_json::Value::as_str))
             .collect::<Vec<_>>();
+        let expected_command = format!(
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{}\" -Executable \"{}\"",
+            test_root.join("codextray-hook.ps1").display(),
+            current_exe.display()
+        );
 
         assert_eq!(
             commands,
-            vec![
-                "python other.py",
-                "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"D:\\Tools\\CodexTray\\codextray-hook.ps1\" -Executable \"D:\\Tools\\CodexTray\\CodexTray.exe\""
-            ]
+            vec!["python other.py", expected_command.as_str()]
         );
     }
 
