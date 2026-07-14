@@ -11,8 +11,9 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::models::{
-    AccountSnapshot, QuotaFetchResult, QuotaSourceKind, QuotaWindow, RateLimitResetCredits,
-    RateLimitSnapshot, TokenActivityBucket, TokenActivitySnapshot, TokenActivitySource,
+    AccountSnapshot, QuotaFetchResult, QuotaSourceKind, QuotaWindow, RateLimitResetCredit,
+    RateLimitResetCredits, RateLimitSnapshot, TokenActivityBucket, TokenActivitySnapshot,
+    TokenActivitySource,
 };
 
 #[derive(Debug, Clone)]
@@ -669,16 +670,46 @@ fn extract_reset_credits(value: &Value) -> Option<RateLimitResetCredits> {
         .get("availableCount")
         .or_else(|| credits.get("available_count"))
         .and_then(parse_u64_field)?;
-    let expires_at = credits
-        .get("expiresAt")
-        .or_else(|| credits.get("expires_at"))
-        .or_else(|| credits.get("expirationTime"))
-        .and_then(parse_optional_time_field);
+    let credit_items = credits
+        .get("credits")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| extract_reset_credit(item, index))
+                .collect()
+        })
+        .unwrap_or_default();
 
     Some(RateLimitResetCredits {
         available_count,
-        expires_at,
+        credits: credit_items,
     })
+}
+
+fn extract_reset_credit(value: &Value, index: usize) -> RateLimitResetCredit {
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("reset-credit-{index}"));
+    let title = value
+        .get("title")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "限额重置".to_string());
+    let expires_at = value
+        .get("expiresAt")
+        .or_else(|| value.get("expires_at"))
+        .or_else(|| value.get("expirationTime"))
+        .and_then(parse_optional_time_field);
+
+    RateLimitResetCredit {
+        id,
+        title,
+        expires_at,
+    }
 }
 
 fn parse_optional_time_field(value: &Value) -> Option<String> {
@@ -812,8 +843,21 @@ mod tests {
             },
             "rateLimitsByLimitId": null,
             "rateLimitResetCredits": {
-                "availableCount": 1,
-                "expiresAt": 1_783_600_000
+                "availableCount": 2,
+                "credits": [
+                    {
+                        "id": "reset-credit-1",
+                        "status": "available",
+                        "expiresAt": 1_783_600_000,
+                        "title": "Full reset"
+                    },
+                    {
+                        "id": "reset-credit-2",
+                        "status": "available",
+                        "expiresAt": 1_784_600_000,
+                        "title": "Another reset"
+                    }
+                ]
             }
         });
 
@@ -832,8 +876,13 @@ mod tests {
             .quota
             .reset_credits
             .expect("reset credits should parse");
-        assert_eq!(reset_credits.available_count, 1);
-        assert!(reset_credits.expires_at.is_some());
+        assert_eq!(reset_credits.available_count, 2);
+        assert_eq!(reset_credits.credits.len(), 2);
+        assert_eq!(reset_credits.credits[0].title, "Full reset");
+        assert!(reset_credits
+            .credits
+            .iter()
+            .all(|credit| credit.expires_at.is_some()));
     }
 
     #[test]

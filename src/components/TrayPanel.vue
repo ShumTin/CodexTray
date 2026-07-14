@@ -78,13 +78,14 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "修复额度窗口标签",
-    detail: "额度面板现在会按 Codex CLI 返回的实际窗口时长显示标签，修复仅有 7D 额度时误显示为 5H 的问题。",
+    title: "查看限额重置明细",
+    detail: "额度面板右上角的重置次数支持悬停查看所有可用重置额度，并显示各自的到期时间。",
   },
 ];
 
 const quotaWindows = computed(() => snapshot.value?.quota?.windows ?? []);
 const quotaResetCredits = computed(() => snapshot.value?.quota?.resetCredits ?? null);
+const quotaResetCreditItems = computed(() => quotaResetCredits.value?.credits ?? []);
 const metrics = computed(() => snapshot.value?.metrics ?? []);
 const heatmapDays = computed(() => snapshot.value?.heatmapDays ?? []);
 const visibleHeatmapDays = computed(() => heatmapDays.value.slice(-224));
@@ -839,7 +840,7 @@ function formatResetAt(value: string | null): string {
 
 function formatResetCreditExpiresAt(value: string | null): string {
   if (!value) {
-    return "未知";
+    return "暂无到期时间";
   }
 
   const date = new Date(value);
@@ -847,7 +848,7 @@ function formatResetCreditExpiresAt(value: string | null): string {
     return value;
   }
 
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+  return `将于 ${date.getMonth() + 1}/${date.getDate()} 到期`;
 }
 
 function formatQuotaLabel(label: string): string {
@@ -1071,15 +1072,18 @@ function formatLogTime(value: string): string {
             aria-describedby="quota-reset-tooltip"
           >
             重置次数: {{ quotaResetCredits.availableCount }}
-            <span id="quota-reset-tooltip" class="quota-reset-card" role="tooltip">
-              <span class="quota-reset-card-head">
-                <span>过期时间</span>
-                <b>可用: {{ quotaResetCredits.availableCount }}</b>
+            <span id="quota-reset-tooltip" class="quota-reset-popover" role="tooltip">
+              <span class="quota-reset-popover-head">
+                <strong>使用限额重置</strong>
+                <span>可用 {{ quotaResetCredits.availableCount }} 次</span>
               </span>
-              <time v-if="quotaResetCredits.expiresAt">
-                {{ formatResetCreditExpiresAt(quotaResetCredits.expiresAt) }}
-              </time>
-              <strong v-else>暂无过期时间</strong>
+              <span v-if="quotaResetCreditItems.length > 0" class="quota-reset-list">
+                <span v-for="credit in quotaResetCreditItems" :key="credit.id">
+                  <strong>{{ credit.title }}</strong>
+                  <time>{{ formatResetCreditExpiresAt(credit.expiresAt) }}</time>
+                </span>
+              </span>
+              <span v-else class="quota-reset-empty">暂无重置额度明细</span>
             </span>
           </span>
         </div>

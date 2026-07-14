@@ -4,9 +4,15 @@ export interface QuotaWindow {
   readonly resetAt: string | null;
 }
 
+export interface RateLimitResetCredit {
+  readonly id: string;
+  readonly title: string;
+  readonly expiresAt: string | null;
+}
+
 export interface RateLimitResetCredits {
   readonly availableCount: number;
-  readonly expiresAt: string | null;
+  readonly credits: readonly RateLimitResetCredit[];
 }
 
 export interface DashboardMetric {

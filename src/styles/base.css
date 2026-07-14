@@ -348,23 +348,21 @@ button {
   outline-offset: 2px;
 }
 
-.quota-reset-card {
+.quota-reset-popover {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
   z-index: 5;
-  display: grid;
-  width: max-content;
-  min-width: 224px;
-  max-width: 260px;
-  gap: 8px;
-  padding: 16px 18px;
+  display: block;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
   color: var(--text-strong);
   text-align: left;
   pointer-events: none;
   visibility: hidden;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 14px;
   box-shadow:
     0 14px 32px rgba(15, 23, 42, 0.18),
@@ -377,36 +375,71 @@ button {
     visibility 0.12s ease;
 }
 
-.quota-reset-pill:hover .quota-reset-card,
-.quota-reset-pill:focus-visible .quota-reset-card {
+.quota-reset-pill:hover .quota-reset-popover,
+.quota-reset-pill:focus-visible .quota-reset-popover {
   visibility: visible;
   opacity: 1;
   transform: translateY(0);
 }
 
-.quota-reset-card-head {
+.quota-reset-popover-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
+  gap: 10px;
+  padding: 12px 14px;
+  color: var(--text-strong);
 }
 
-.quota-reset-card-head b {
+.quota-reset-popover-head > strong {
+  margin-right: auto;
+  font-size: 14px;
+}
+
+.quota-reset-popover-head > span {
   padding: 3px 9px;
   color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 800;
   background: rgba(20, 184, 166, 0.12);
-  border: 1px solid rgba(20, 184, 166, 0.2);
   border-radius: 999px;
 }
 
-.quota-reset-card time,
-.quota-reset-card strong {
+.quota-reset-list {
+  display: grid;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.quota-reset-list > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  padding: 8px 14px;
+}
+
+.quota-reset-list > span + span {
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.quota-reset-list strong {
   color: var(--text-strong);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 13px;
+}
+
+.quota-reset-list time {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.quota-reset-empty {
+  margin: 0;
+  padding: 10px 14px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .quota-list {
