@@ -124,6 +124,12 @@ pub fn clear_codex_cli_path() -> Result<AppSettings, String> {
     write_settings(&settings)
 }
 
+pub fn set_quota_widget_enabled(enabled: bool) -> Result<AppSettings, String> {
+    let mut settings = read_settings();
+    settings.quota_widget_enabled = enabled;
+    write_settings(&settings)
+}
+
 pub fn choose_codex_cli_path() -> Option<String> {
     rfd::FileDialog::new()
         .set_title("选择 Codex CLI")
@@ -441,6 +447,7 @@ fn default_settings() -> AppSettings {
         theme: ThemeMode::Light,
         global_shortcut: "Ctrl+Shift+C".to_string(),
         codex_cli_path: None,
+        quota_widget_enabled: true,
     }
 }
 

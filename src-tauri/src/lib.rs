@@ -16,7 +16,7 @@ use startup_diagnostics::StartupDiagnosticVariant;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::menu::MenuBuilder;
+use tauri::menu::{CheckMenuItem, MenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::webview::Color;
 use tauri::{Emitter, Manager, State, WindowEvent};
@@ -29,7 +29,9 @@ use url::Url;
 const MENU_TOGGLE_PANEL: &str = "toggle_panel";
 const MENU_SETTINGS: &str = "settings";
 const MENU_REFRESH: &str = "refresh";
+const MENU_TOGGLE_QUOTA_WIDGET: &str = "toggle_quota_widget";
 const TRAY_ID: &str = "codextray-main";
+const QUOTA_WIDGET_LABEL: &str = "quota-widget";
 const EVENT_DASHBOARD_REFRESH_STARTED: &str = "codextray://dashboard-refresh-started";
 const EVENT_DASHBOARD_REFRESHED: &str = "codextray://dashboard-refreshed";
 const MENU_QUIT: &str = "quit";
@@ -46,9 +48,27 @@ const DETAIL_WIDTH: f64 = DETAIL_CARD_WIDTH + DETAIL_SHADOW_MARGIN * 2.0;
 const DETAIL_HEIGHT: f64 = DETAIL_CARD_HEIGHT + DETAIL_SHADOW_MARGIN * 2.0;
 const DETAIL_GAP: f64 = 8.0;
 const PANEL_WORK_AREA_MARGIN: i32 = 8;
+const QUOTA_WIDGET_WIDTH: f64 = 160.0;
+const QUOTA_WIDGET_HEIGHT: f64 = 48.0;
+const QUOTA_WIDGET_TOP_MARGIN: i32 = 96;
+const QUOTA_WIDGET_EDGE_REVEAL_SIZE: i32 = 12;
+const QUOTA_WIDGET_EDGE_GAP: i32 = 8;
+const QUOTA_WIDGET_SNAP_DISTANCE: i32 = 20;
+const QUOTA_WIDGET_ANIMATION_DURATION_MILLIS: u64 = 180;
+const QUOTA_WIDGET_ANIMATION_FRAMES: u64 = 12;
 static LAST_DASHBOARD_REFRESH_STARTED_AT: AtomicU64 = AtomicU64::new(0);
 static DASHBOARD_REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static LAST_TRAY_ICON_STATE: Mutex<Option<tray_status::TrayIconState>> = Mutex::new(None);
+static QUOTA_WIDGET_MOVE_GENERATION: AtomicU64 = AtomicU64::new(0);
+static QUOTA_WIDGET_ANIMATION_GENERATION: AtomicU64 = AtomicU64::new(0);
+static QUOTA_WIDGET_IGNORE_MOVES_UNTIL: AtomicU64 = AtomicU64::new(0);
+static QUOTA_WIDGET_EDGE: Mutex<Option<QuotaWidgetEdge>> = Mutex::new(None);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum QuotaWidgetEdge {
+    Left,
+    Right,
+}
 
 enum DashboardRefreshLog {
     Record(&'static str),
@@ -111,6 +131,279 @@ fn show_settings_window(app: &tauri::AppHandle) {
     };
 
     let _ = window.set_focus();
+}
+
+fn toggle_quota_widget(app: &tauri::AppHandle) -> Result<bool, String> {
+    let enabled = !settings::read_settings().quota_widget_enabled;
+    settings::set_quota_widget_enabled(enabled)?;
+
+    let window = app
+        .get_webview_window(QUOTA_WIDGET_LABEL)
+        .ok_or_else(|| "额度悬浮窗不存在".to_string())?;
+
+    if enabled {
+        window
+            .show()
+            .map_err(|error| format!("额度悬浮窗显示失败：{}", error))?;
+    } else {
+        window
+            .hide()
+            .map_err(|error| format!("额度悬浮窗隐藏失败：{}", error))?;
+    }
+
+    Ok(enabled)
+}
+
+fn position_quota_widget_at_startup(window: &WebviewWindow) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let work_area = monitor.work_area();
+    let x = quota_widget_startup_x(work_area.position.x, work_area.size.width);
+    let y = work_area.position.y + QUOTA_WIDGET_TOP_MARGIN;
+
+    set_quota_widget_edge(QuotaWidgetEdge::Right);
+    move_quota_widget(window, x, y);
+}
+
+fn quota_widget_startup_x(work_area_left: i32, work_area_width: u32) -> i32 {
+    work_area_left + work_area_width as i32 - QUOTA_WIDGET_EDGE_REVEAL_SIZE
+}
+
+fn bind_quota_widget_edge_hiding(window: &WebviewWindow) {
+    let app = window.app_handle().clone();
+    window.on_window_event(move |event| {
+        if !matches!(event, WindowEvent::Moved(_))
+            || current_epoch_millis() < QUOTA_WIDGET_IGNORE_MOVES_UNTIL.load(Ordering::Relaxed)
+        {
+            return;
+        }
+
+        let generation = QUOTA_WIDGET_MOVE_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(420)).await;
+            if QUOTA_WIDGET_MOVE_GENERATION.load(Ordering::Relaxed) == generation {
+                settle_quota_widget_at_edge(&app);
+            }
+        });
+    });
+}
+
+fn settle_quota_widget_at_edge(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window(QUOTA_WIDGET_LABEL) else {
+        return;
+    };
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let Ok(position) = window.outer_position() else {
+        return;
+    };
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
+    let work_area = monitor.work_area();
+    let left = work_area.position.x;
+    let right = left + work_area.size.width as i32;
+    let touches_left = position.x <= left + QUOTA_WIDGET_SNAP_DISTANCE;
+    let touches_right = position.x + size.width as i32 >= right - QUOTA_WIDGET_SNAP_DISTANCE;
+
+    let edge = match (touches_left, touches_right) {
+        (false, false) => return,
+        (true, false) => QuotaWidgetEdge::Left,
+        (false, true) => QuotaWidgetEdge::Right,
+        (true, true) => {
+            let left_distance = position.x.abs_diff(left);
+            let right_distance = (position.x + size.width as i32).abs_diff(right);
+            if left_distance <= right_distance {
+                QuotaWidgetEdge::Left
+            } else {
+                QuotaWidgetEdge::Right
+            }
+        }
+    };
+
+    hide_quota_widget_for_edge(&window, edge);
+}
+
+fn hide_quota_widget_for_edge(window: &WebviewWindow, edge: QuotaWidgetEdge) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let Ok(position) = window.outer_position() else {
+        return;
+    };
+    let Ok(size) = window.outer_size() else {
+        return;
+    };
+    let work_area = monitor.work_area();
+    let left = work_area.position.x;
+    let right = left + work_area.size.width as i32;
+    let top = work_area.position.y;
+    let bottom = top + work_area.size.height as i32;
+    let x = match edge {
+        QuotaWidgetEdge::Left => left - size.width as i32 + QUOTA_WIDGET_EDGE_REVEAL_SIZE,
+        QuotaWidgetEdge::Right => right - QUOTA_WIDGET_EDGE_REVEAL_SIZE,
+    };
+    let y = clamp_position(position.y, top, bottom - size.height as i32);
+
+    set_quota_widget_edge(edge);
+    update_quota_widget_edge_ui(window, Some(edge));
+    animate_quota_widget(window, x, y);
+}
+
+fn move_quota_widget(window: &WebviewWindow, x: i32, y: i32) {
+    QUOTA_WIDGET_IGNORE_MOVES_UNTIL.store(current_epoch_millis() + 320, Ordering::Relaxed);
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+fn animate_quota_widget(window: &WebviewWindow, target_x: i32, target_y: i32) {
+    let Ok(start) = window.outer_position() else {
+        move_quota_widget(window, target_x, target_y);
+        return;
+    };
+    let generation = QUOTA_WIDGET_ANIMATION_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+    let window = window.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let frame_duration = Duration::from_millis(
+            QUOTA_WIDGET_ANIMATION_DURATION_MILLIS / QUOTA_WIDGET_ANIMATION_FRAMES,
+        );
+        for frame in 1..=QUOTA_WIDGET_ANIMATION_FRAMES {
+            tokio::time::sleep(frame_duration).await;
+            if QUOTA_WIDGET_ANIMATION_GENERATION.load(Ordering::Relaxed) != generation {
+                return;
+            }
+
+            let progress = frame as f64 / QUOTA_WIDGET_ANIMATION_FRAMES as f64;
+            let eased = 1.0 - (1.0 - progress).powi(3);
+            let x = start.x + ((target_x - start.x) as f64 * eased).round() as i32;
+            let y = start.y + ((target_y - start.y) as f64 * eased).round() as i32;
+            move_quota_widget(&window, x, y);
+        }
+    });
+}
+
+fn set_quota_widget_edge(edge: QuotaWidgetEdge) {
+    if let Ok(mut current_edge) = QUOTA_WIDGET_EDGE.lock() {
+        *current_edge = Some(edge);
+    }
+}
+
+fn quota_widget_edge() -> Option<QuotaWidgetEdge> {
+    QUOTA_WIDGET_EDGE.lock().ok().and_then(|edge| *edge)
+}
+
+fn clear_quota_widget_edge() {
+    if let Ok(mut edge) = QUOTA_WIDGET_EDGE.lock() {
+        *edge = None;
+    }
+}
+
+fn update_quota_widget_edge_ui(window: &WebviewWindow, edge: Option<QuotaWidgetEdge>) {
+    let value = match edge {
+        Some(QuotaWidgetEdge::Left) => "left",
+        Some(QuotaWidgetEdge::Right) => "right",
+        None => "",
+    };
+    let _ = window.eval(&format!(
+        "document.documentElement.dataset.quotaWidgetEdge = '{}';",
+        value
+    ));
+}
+
+fn create_quota_widget_window(app: &tauri::App) -> tauri::Result<()> {
+    let enabled = settings::read_settings().quota_widget_enabled;
+    let window = WebviewWindowBuilder::new(
+        app,
+        QUOTA_WIDGET_LABEL,
+        WebviewUrl::App("index.html?view=quota-widget".into()),
+    )
+    .title("CodexTray 额度")
+    .inner_size(QUOTA_WIDGET_WIDTH, QUOTA_WIDGET_HEIGHT)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .background_color(Color(0, 0, 0, 0))
+    .shadow(false)
+    .visible(false)
+    .skip_taskbar(true)
+    .always_on_top(true)
+    .build()?;
+
+    bind_quota_widget_edge_hiding(&window);
+    position_quota_widget_at_startup(&window);
+    if enabled {
+        window.show()?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn sync_quota_widget_edge_ui(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window(QUOTA_WIDGET_LABEL)
+        .ok_or_else(|| "额度悬浮条不存在".to_string())?;
+    update_quota_widget_edge_ui(&window, quota_widget_edge());
+    Ok(())
+}
+
+#[tauri::command]
+fn reveal_quota_widget_from_edge(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(edge) = quota_widget_edge() else {
+        return Ok(());
+    };
+    let window = app
+        .get_webview_window(QUOTA_WIDGET_LABEL)
+        .ok_or_else(|| "额度悬浮条不存在".to_string())?;
+    let monitor = window
+        .current_monitor()
+        .map_err(|error| format!("无法读取屏幕信息：{}", error))?
+        .ok_or_else(|| "未找到额度悬浮条所在屏幕".to_string())?;
+    let position = window
+        .outer_position()
+        .map_err(|error| format!("无法读取额度悬浮条位置：{}", error))?;
+    let size = window
+        .outer_size()
+        .map_err(|error| format!("无法读取额度悬浮条尺寸：{}", error))?;
+    let work_area = monitor.work_area();
+    let left = work_area.position.x;
+    let right = left + work_area.size.width as i32;
+    let x = match edge {
+        QuotaWidgetEdge::Left => left + QUOTA_WIDGET_EDGE_GAP,
+        QuotaWidgetEdge::Right => right - size.width as i32 - QUOTA_WIDGET_EDGE_GAP,
+    };
+
+    update_quota_widget_edge_ui(&window, None);
+    animate_quota_widget(&window, x, position.y);
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_quota_widget_at_edge(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(edge) = quota_widget_edge() else {
+        return Ok(());
+    };
+    let window = app
+        .get_webview_window(QUOTA_WIDGET_LABEL)
+        .ok_or_else(|| "额度悬浮条不存在".to_string())?;
+
+    hide_quota_widget_for_edge(&window, edge);
+    Ok(())
+}
+
+#[tauri::command]
+fn start_quota_widget_drag(app: tauri::AppHandle) -> Result<(), String> {
+    QUOTA_WIDGET_ANIMATION_GENERATION.fetch_add(1, Ordering::Relaxed);
+    clear_quota_widget_edge();
+    let window = app
+        .get_webview_window(QUOTA_WIDGET_LABEL)
+        .ok_or_else(|| "额度悬浮条不存在".to_string())?;
+    update_quota_widget_edge_ui(&window, None);
+    window
+        .start_dragging()
+        .map_err(|error| format!("额度悬浮条拖动失败：{}", error))
 }
 
 fn refresh_dashboard_from_tray(app: &tauri::AppHandle) {
@@ -436,7 +729,77 @@ fn update_dashboard_window(app: &tauri::AppHandle, snapshot: &DashboardSnapshot)
     }
 }
 
+fn current_epoch_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn update_quota_widget_window(app: &tauri::AppHandle, snapshot: &DashboardSnapshot) {
+    let Some(window) = app.get_webview_window(QUOTA_WIDGET_LABEL) else {
+        return;
+    };
+    let Ok(payload) = serde_json::to_string(snapshot) else {
+        return;
+    };
+    let quota_count = snapshot
+        .quota
+        .as_ref()
+        .map(|quota| quota.windows.len())
+        .unwrap_or_default();
+    if window
+        .set_size(tauri::LogicalSize::new(
+            QUOTA_WIDGET_WIDTH,
+            quota_widget_height(quota_count),
+        ))
+        .is_err()
+    {
+        settings::append_log("WARN", "额度悬浮条尺寸更新失败");
+    }
+    let script = format!(
+        r#"
+        window.__codexTrayDashboardSnapshot = {payload};
+        window.dispatchEvent(new CustomEvent("codextray-dashboard-refreshed", {{ detail: {payload} }}));
+        "#
+    );
+
+    if window.eval(&script).is_err() {
+        settings::append_log("WARN", "额度悬浮条同步失败");
+    }
+}
+
+fn quota_widget_height(quota_count: usize) -> f64 {
+    QUOTA_WIDGET_HEIGHT + quota_count.saturating_sub(1) as f64 * 34.0
+}
+
+#[cfg(test)]
+mod quota_widget_tests {
+    use super::{quota_widget_height, quota_widget_startup_x, QUOTA_WIDGET_EDGE_REVEAL_SIZE};
+
+    #[test]
+    fn compact_widget_height_tracks_the_number_of_quota_rows() {
+        assert_eq!(quota_widget_height(0), 48.0);
+        assert_eq!(quota_widget_height(1), 48.0);
+        assert_eq!(quota_widget_height(2), 82.0);
+    }
+
+    #[test]
+    fn startup_position_keeps_only_the_edge_reveal_strip_visible() {
+        let work_area_left = 120;
+        let work_area_width = 1920;
+        let work_area_right = work_area_left + work_area_width as i32;
+
+        assert_eq!(
+            work_area_right - quota_widget_startup_x(work_area_left, work_area_width),
+            QUOTA_WIDGET_EDGE_REVEAL_SIZE,
+        );
+    }
+}
+
 fn update_tray_status(app: &tauri::AppHandle, snapshot: &DashboardSnapshot) {
+    update_quota_widget_window(app, snapshot);
+
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
@@ -1070,6 +1433,7 @@ pub fn run() {
             startup_diagnostics::record("setup.begin", "");
             app.handle().plugin(tauri_plugin_positioner::init())?;
             create_detail_window(app)?;
+            create_quota_widget_window(app)?;
             startup_diagnostics::record("setup.webviews.ready", "");
 
             if let Some(window) = app.get_webview_window("main") {
@@ -1089,10 +1453,20 @@ pub fn run() {
             schedule_startup_dashboard_refresh(app.handle());
             schedule_periodic_dashboard_refresh(app.handle());
 
+            let quota_widget_menu = CheckMenuItem::with_id(
+                app,
+                MENU_TOGGLE_QUOTA_WIDGET,
+                "显示额度悬浮条",
+                true,
+                settings::read_settings().quota_widget_enabled,
+                None::<&str>,
+            )?;
+            let quota_widget_menu_for_event = quota_widget_menu.clone();
             let tray_menu = MenuBuilder::new(app)
                 .text(MENU_TOGGLE_PANEL, "显示/隐藏面板")
                 .text(MENU_SETTINGS, "设置")
                 .text(MENU_REFRESH, "刷新数据")
+                .item(&quota_widget_menu)
                 .separator()
                 .text(MENU_QUIT, "退出 CodexTray")
                 .build()?;
@@ -1102,7 +1476,7 @@ pub fn run() {
                 .icon(tray_status::default_icon())
                 .tooltip("CodexTray")
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id().as_ref() {
+                .on_menu_event(move |app, event| match event.id().as_ref() {
                     MENU_TOGGLE_PANEL => toggle_panel(app),
                     MENU_SETTINGS => show_settings_window(app),
                     MENU_REFRESH => {
@@ -1110,6 +1484,12 @@ pub fn run() {
                         refresh_dashboard_from_tray(app);
                         toggle_panel(app);
                     }
+                    MENU_TOGGLE_QUOTA_WIDGET => match toggle_quota_widget(app) {
+                        Ok(enabled) => {
+                            let _ = quota_widget_menu_for_event.set_checked(enabled);
+                        }
+                        Err(error) => settings::append_log("ERROR", &error),
+                    },
                     MENU_QUIT => app.exit(0),
                     _ => {}
                 })
@@ -1138,6 +1518,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             show_heatmap_detail,
             hide_heatmap_detail,
+            sync_quota_widget_edge_ui,
+            reveal_quota_widget_from_edge,
+            hide_quota_widget_at_edge,
+            start_quota_widget_drag,
             get_dashboard_snapshot,
             refresh_dashboard,
             get_settings_snapshot,

@@ -86,6 +86,7 @@ export interface DashboardSnapshot {
 export interface AppSettings {
   readonly globalShortcut: string;
   readonly codexCliPath: string | null;
+  readonly quotaWidgetEnabled: boolean;
 }
 
 export interface StartupStatus {

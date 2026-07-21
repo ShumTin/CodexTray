@@ -30,6 +30,8 @@ interface AnnouncementItem {
   readonly detail: string;
 }
 
+type QuotaWidgetTone = "healthy" | "warning" | "critical";
+
 declare global {
   interface Window {
     __codexTrayDashboardSnapshot?: DashboardSnapshot;
@@ -40,6 +42,7 @@ declare global {
 
 const isDetailView = new URLSearchParams(window.location.search).get("view") === "detail";
 const isSettingsView = new URLSearchParams(window.location.search).get("view") === "settings";
+const isQuotaWidgetView = new URLSearchParams(window.location.search).get("view") === "quota-widget";
 const dashboardRefreshStartedDomEvent = "codextray-dashboard-refresh-started";
 const dashboardRefreshStartedEvent = "codextray://dashboard-refresh-started";
 const dashboardDomEvent = "codextray-dashboard-refreshed";
@@ -66,6 +69,7 @@ let hasDashboardDomListener = false;
 let isRefreshingDashboard = false;
 let settingsSnapshotRequestId = 0;
 let recentLogsRequestId = 0;
+let quotaWidgetHideTimer: number | undefined;
 const heatmapModes: readonly { label: string; value: HeatmapMode }[] = [
   { label: "每日", value: "daily" },
   { label: "每周", value: "weekly" },
@@ -78,12 +82,38 @@ const settingsTabs: readonly { label: string; value: typeof activeSettingsTab.va
 ];
 const announcementItems: readonly AnnouncementItem[] = [
   {
-    title: "查看限额重置明细",
-    detail: "额度面板右上角的重置次数支持悬停查看所有可用重置额度，并显示各自的到期时间。",
+    title: "新增额度悬浮卡片",
+    detail: "默认显示实时额度、重置时间和进度条，并支持从托盘右键菜单随时关闭或重新开启。",
+  },
+  {
+    title: "支持拖拽与贴边隐藏",
+    detail: "卡片可从任意位置拖动，启动时自动贴靠屏幕边缘；悬浮即可展开，边缘提示会随最低剩余额度改变颜色和长度。",
   },
 ];
 
 const quotaWindows = computed(() => snapshot.value?.quota?.windows ?? []);
+const quotaWidgetWindows = computed(() =>
+  quotaWindows.value.map((quota) => ({
+    label: `Codex-${formatQuotaLabel(quota.label)}`,
+    percent: quota.remainingPercent,
+    resetAt: formatQuotaWidgetResetAt(quota.label, quota.resetAt),
+    tone: quotaWidgetTone(quota.remainingPercent),
+  })),
+);
+const quotaWidgetEdgePercent = computed(() => {
+  const lowestRemainingPercent = Math.min(
+    ...quotaWidgetWindows.value.map((quota) => quota.percent),
+  );
+  return Number.isFinite(lowestRemainingPercent)
+    ? Math.max(0, Math.min(100, lowestRemainingPercent))
+    : 100;
+});
+const quotaWidgetEdgeTone = computed<QuotaWidgetTone>(() =>
+  quotaWidgetTone(quotaWidgetEdgePercent.value),
+);
+const quotaWidgetEdgeHeight = computed(
+  () => `${Math.max(6, Math.round(40 * quotaWidgetEdgePercent.value / 100))}px`,
+);
 const quotaResetCredits = computed(() => snapshot.value?.quota?.resetCredits ?? null);
 const quotaResetCreditItems = computed(() => quotaResetCredits.value?.credits ?? []);
 const metrics = computed(() => snapshot.value?.metrics ?? []);
@@ -184,6 +214,11 @@ const updateButtonLabel = computed(() => {
 const runtimeInfo = computed(() => settingsSnapshot.value?.runtime);
 
 onMounted(() => {
+  if (isQuotaWidgetView) {
+    void initializeQuotaWidget();
+    return;
+  }
+
   if (isDetailView) {
     bindDetailWindow();
     return;
@@ -202,6 +237,7 @@ onUnmounted(() => {
   stopDashboardRefreshListener();
   stopDashboardRefreshStartedDomListener();
   stopDashboardDomListener();
+  stopQuotaWidgetWindowListeners();
 });
 
 async function initializeDashboard(): Promise<void> {
@@ -210,6 +246,12 @@ async function initializeDashboard(): Promise<void> {
   await startDashboardRefreshStartedListener();
   await startDashboardRefreshListener();
   await loadSnapshot();
+}
+
+async function initializeQuotaWidget(): Promise<void> {
+  startDashboardDomListener();
+  applyDashboardSnapshot(await invoke<DashboardSnapshot>("get_dashboard_snapshot"));
+  await invoke("sync_quota_widget_edge_ui");
 }
 
 async function initializeSettingsPage(): Promise<void> {
@@ -335,7 +377,9 @@ function stopDashboardDomListener(): void {
 
 function handleDashboardDomRefresh(event: Event): void {
   completeDashboardRefresh((event as CustomEvent<DashboardSnapshot>).detail);
-  void loadRecentLogs();
+  if (!isQuotaWidgetView) {
+    void loadRecentLogs();
+  }
 }
 
 async function startDashboardRefreshStartedListener(): Promise<void> {
@@ -851,9 +895,59 @@ function formatResetCreditExpiresAt(value: string | null): string {
   return `将于 ${date.getMonth() + 1}/${date.getDate()} 到期`;
 }
 
+function stopQuotaWidgetWindowListeners(): void {
+  window.clearTimeout(quotaWidgetHideTimer);
+}
+
+function revealQuotaWidgetFromEdge(): void {
+  window.clearTimeout(quotaWidgetHideTimer);
+  void invoke("reveal_quota_widget_from_edge");
+}
+
+function scheduleQuotaWidgetEdgeHide(): void {
+  window.clearTimeout(quotaWidgetHideTimer);
+  quotaWidgetHideTimer = window.setTimeout(() => {
+    void invoke("hide_quota_widget_at_edge");
+  }, 560);
+}
+
+function startQuotaWidgetDrag(): void {
+  window.clearTimeout(quotaWidgetHideTimer);
+  void invoke("start_quota_widget_drag");
+}
+
 function formatQuotaLabel(label: string): string {
   const parts = label.trim().split(/\s+/);
   return parts[parts.length - 1] ?? label;
+}
+
+function quotaWidgetTone(remainingPercent: number): QuotaWidgetTone {
+  if (remainingPercent <= 20) {
+    return "critical";
+  }
+
+  if (remainingPercent <= 50) {
+    return "warning";
+  }
+
+  return "healthy";
+}
+
+function formatQuotaWidgetResetAt(label: string, value: string | null): string {
+  if (!value) {
+    return "N/A";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "N/A";
+  }
+
+  if (formatQuotaLabel(label).toUpperCase().endsWith("H")) {
+    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  }
+
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function formatLogTime(value: string): string {
@@ -872,7 +966,46 @@ function formatLogTime(value: string): string {
 </script>
 
 <template>
-  <aside v-if="isDetailView" class="detail-card visible" aria-label="热力图详情">
+  <aside
+    v-if="isQuotaWidgetView"
+    class="quota-widget"
+    aria-label="Codex 额度悬浮条"
+    @mouseenter="revealQuotaWidgetFromEdge"
+    @mouseleave="scheduleQuotaWidgetEdgeHide"
+    @pointerdown.left="startQuotaWidgetDrag"
+  >
+    <i
+      class="quota-edge-handle"
+      :class="quotaWidgetEdgeTone"
+      :style="{ height: quotaWidgetEdgeHeight }"
+      aria-hidden="true"
+    />
+
+    <div v-if="quotaWidgetWindows.length > 0" class="quota-widget-list">
+      <article
+        v-for="quota in quotaWidgetWindows"
+        :key="quota.label"
+        class="quota-widget-row"
+        :class="quota.tone"
+      >
+        <div class="quota-widget-meta">
+          <span>{{ quota.label }}</span>
+          <time>{{ quota.resetAt }}</time>
+          <strong>{{ quota.percent }}%</strong>
+        </div>
+        <div class="quota-widget-track" role="progressbar" :aria-valuenow="quota.percent" aria-valuemin="0" aria-valuemax="100">
+          <i :style="{ width: `${quota.percent}%` }" />
+        </div>
+      </article>
+    </div>
+
+    <div v-else class="quota-widget-empty">
+      <span>正在读取额度</span>
+      <i />
+    </div>
+  </aside>
+
+  <aside v-else-if="isDetailView" class="detail-card visible" aria-label="热力图详情">
     <div class="detail-head">
       <time>{{ detailSnapshot?.title ?? "等待选择" }}</time>
       <strong>{{ detailSnapshot?.tokenValue ?? "-" }}</strong>

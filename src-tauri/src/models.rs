@@ -190,6 +190,27 @@ pub struct AppSettings {
     pub global_shortcut: String,
     #[serde(default)]
     pub codex_cli_path: Option<String>,
+    #[serde(default = "default_quota_widget_enabled")]
+    pub quota_widget_enabled: bool,
+}
+
+fn default_quota_widget_enabled() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::AppSettings;
+
+    #[test]
+    fn legacy_settings_enable_quota_widget_so_existing_users_receive_the_feature() {
+        let settings: AppSettings = serde_json::from_str(
+            r#"{"theme":"light","globalShortcut":"Ctrl+Shift+C","codexCliPath":null}"#,
+        )
+        .expect("legacy settings should remain readable");
+
+        assert!(settings.quota_widget_enabled);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
